@@ -1,0 +1,15 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+body { font-family: 'Inter', sans-serif; transition: background-color 0.3s, color 0.3s; }
+
+.custom-input {
+    transition: all 0.2s;
+}
+.custom-input:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+/* Transiciones suaves para modo oscuro */
+.theme-transition {
+    transition: background-color 0.3s, border-color 0.3s, color 0.3s;
+}
