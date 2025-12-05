@@ -1,0 +1,633 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jornada de Trading</title>
+    <!-- Tailwind CSS (con soporte Dark Mode) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class', // Activar modo oscuro manual
+        }
+    </script>
+    <!-- Iconos FontAwesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; transition: background-color 0.3s, color 0.3s; }
+        
+        .custom-input {
+            transition: all 0.2s;
+        }
+        .custom-input:focus {
+            outline: none;
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+        /* Transiciones suaves para modo oscuro */
+        .theme-transition {
+            transition: background-color 0.3s, border-color 0.3s, color 0.3s;
+        }
+    </style>
+</head>
+<body class="bg-[#f0f4f8] dark:bg-slate-900 text-slate-800 dark:text-slate-100 pb-20 theme-transition">
+
+    <!-- BOTÓN MODO OSCURO (Flotante o en Header) -->
+    <div class="absolute top-6 right-6">
+        <button onclick="toggleTheme()" class="bg-white dark:bg-slate-800 text-slate-600 dark:text-yellow-400 p-2 rounded-full shadow-md border border-slate-200 dark:border-slate-700 hover:scale-110 transition">
+            <i id="theme-icon" class="fa-solid fa-moon"></i>
+        </button>
+    </div>
+
+    <!-- SECCIÓN SUPERIOR: FECHA Y PROFIT -->
+    <div class="text-center pt-8 pb-4">
+        <h1 class="text-2xl font-bold mb-4">Jornada de Trading</h1>
+        <div id="date-picker-wrapper" class="inline-flex items-center bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded px-3 py-2 shadow-sm theme-transition" role="button" tabindex="0">
+            <i class="fa-regular fa-calendar text-slate-500 dark:text-slate-400 mr-2"></i>
+            <input type="date" id="datePicker" class="text-sm text-slate-700 dark:text-slate-200 bg-transparent focus:outline-none font-medium cursor-pointer">
+        </div>
+    </div>
+
+    <div class="max-w-xs mx-auto mb-6">
+        <div class="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700 p-6 text-center theme-transition">
+            <div class="text-2xl font-bold transition-colors duration-300" id="main-profit-display">
+                <i class="fa-solid fa-arrow-trend-up mr-2 text-sm"></i> Profit Total: 0.00%
+            </div>
+        </div>
+    </div>
+
+    <!-- SECCIÓN PRINCIPAL: INPUTS -->
+    <div class="max-w-5xl mx-auto px-4 grid grid-cols-1 md:grid-cols-2 gap-6">
+
+        <!-- TAKE PROFIT -->
+        <div class="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-hidden theme-transition">
+            <div class="bg-green-50 dark:bg-green-900/20 px-6 py-3 border-b border-green-100 dark:border-green-900/30 flex items-center">
+                <i class="fa-solid fa-arrow-trend-up text-green-500 mr-2"></i>
+                <h2 class="font-bold text-green-700 dark:text-green-400">Take Profit</h2>
+            </div>
+            <div class="p-6">
+                <!-- Inputs: Activo + Porcentaje + Botón -->
+                <div class="flex gap-2 mb-6">
+                    <input type="text" id="tp-asset" placeholder="Activo (BTC)" 
+                        class="custom-input w-1/3 px-3 py-2 rounded text-sm text-slate-600 dark:text-slate-200 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 placeholder-slate-400 uppercase font-bold">
+                    
+                    <input type="number" step="0.01" id="tp-input" placeholder="%" 
+                        class="custom-input w-1/3 px-3 py-2 rounded text-sm text-slate-600 dark:text-slate-200 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 placeholder-slate-400">
+                    
+                    <button onclick="addEntry('tp')" class="w-1/3 bg-blue-500 hover:bg-blue-600 text-white font-medium rounded text-sm transition">+ Agregar</button>
+                </div>
+
+                <div class="bg-green-50 dark:bg-green-900/20 rounded p-3 flex justify-between items-center mb-6">
+                    <span class="font-bold text-slate-700 dark:text-slate-300 text-sm">Total:</span>
+                    <span class="font-bold text-green-600 dark:text-green-400 text-lg" id="tp-total-display">0.00%</span>
+                </div>
+                <div class="flex justify-between items-center mb-3">
+                    <span class="text-slate-600 dark:text-slate-400 font-medium text-sm">Historial:</span>
+                    <button onclick="clearList('tp')" class="text-xs border border-slate-200 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-700 px-3 py-1 rounded text-slate-500 dark:text-slate-400 transition">Limpiar</button>
+                </div>
+                <div id="tp-list" class="space-y-2 min-h-[50px]">
+                    <div class="text-center text-slate-300 dark:text-slate-600 text-sm py-4">No hay registros</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- STOP LOSS -->
+        <div class="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-hidden theme-transition">
+            <div class="bg-red-50 dark:bg-red-900/20 px-6 py-3 border-b border-red-100 dark:border-red-900/30 flex items-center">
+                <i class="fa-solid fa-arrow-trend-down text-red-500 mr-2"></i>
+                <h2 class="font-bold text-red-700 dark:text-red-400">Stop Loss</h2>
+            </div>
+            <div class="p-6">
+                <!-- Inputs: Activo + Porcentaje + Botón -->
+                <div class="flex gap-2 mb-6">
+                    <input type="text" id="sl-asset" placeholder="Activo (BTC)" 
+                        class="custom-input w-1/3 px-3 py-2 rounded text-sm text-slate-600 dark:text-slate-200 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 placeholder-slate-400 uppercase font-bold">
+
+                    <input type="number" step="0.01" id="sl-input" placeholder="%" 
+                        class="custom-input w-1/3 px-3 py-2 rounded text-sm text-slate-600 dark:text-slate-200 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 placeholder-slate-400">
+                    
+                    <button onclick="addEntry('sl')" class="w-1/3 bg-blue-500 hover:bg-blue-600 text-white font-medium rounded text-sm transition">+ Agregar</button>
+                </div>
+
+                <div class="bg-red-50 dark:bg-red-900/20 rounded p-3 flex justify-between items-center mb-6">
+                    <span class="font-bold text-slate-700 dark:text-slate-300 text-sm">Total:</span>
+                    <span class="font-bold text-red-600 dark:text-red-400 text-lg" id="sl-total-display">0.00%</span>
+                </div>
+                <div class="flex justify-between items-center mb-3">
+                    <span class="text-slate-600 dark:text-slate-400 font-medium text-sm">Historial:</span>
+                    <button onclick="clearList('sl')" class="text-xs border border-slate-200 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-700 px-3 py-1 rounded text-slate-500 dark:text-slate-400 transition">Limpiar</button>
+                </div>
+                <div id="sl-list" class="space-y-2 min-h-[50px]">
+                    <div class="text-center text-slate-300 dark:text-slate-600 text-sm py-4">No hay registros</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- RESUMEN DE OPERACIÓN (TARJETA INFERIOR) -->
+    <div class="max-w-5xl mx-auto px-4 mt-6">
+        <div class="bg-slate-50/50 dark:bg-slate-800/50 backdrop-blur border border-slate-200 dark:border-slate-700 rounded-xl p-8 text-center shadow-sm theme-transition">
+            <h3 class="text-slate-700 dark:text-slate-300 font-bold mb-6">Resumen de Operación</h3>
+            
+            <div class="grid grid-cols-3 gap-4 mb-8">
+                <div>
+                    <div class="text-xs text-slate-500 dark:text-slate-400 mb-1">Take Profit</div>
+                    <div class="font-bold text-green-600 dark:text-green-400 text-lg" id="footer-tp">+0.00%</div>
+                </div>
+                <div>
+                    <div class="text-xs text-slate-500 dark:text-slate-400 mb-1">Stop Loss</div>
+                    <div class="font-bold text-red-600 dark:text-red-400 text-lg" id="footer-sl">-0.00%</div>
+                </div>
+                <div>
+                    <div class="text-xs text-slate-500 dark:text-slate-400 mb-1">Neto</div>
+                    <div class="font-bold text-lg" id="footer-net">0.00%</div>
+                </div>
+            </div>
+
+            <div class="flex justify-center gap-4">
+                <button id="btn-toggle-summary" onclick="toggleSummaries()" class="flex items-center gap-2 border border-blue-400 dark:border-blue-500 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-slate-700 px-4 py-2 rounded text-sm font-medium transition">
+                    <i class="fa-solid fa-chart-column"></i> Ver Resúmenes
+                </button>
+                <button onclick="clearAll()" class="border border-red-400 dark:border-red-500 text-red-500 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 px-4 py-2 rounded text-sm font-medium transition">
+                    Limpiar todos los datos
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- SECCIÓN DESPLEGABLE: RESÚMENES -->
+    <div id="summaries-section" class="hidden max-w-5xl mx-auto px-4 mt-6 space-y-6">
+        
+        <!-- 1. Resumen Diario (Lista) -->
+        <div class="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-6 theme-transition">
+            <h3 class="font-bold text-slate-800 dark:text-slate-100 mb-4 flex items-center gap-2">
+                <i class="fa-solid fa-chart-simple"></i> Resumen Diario
+            </h3>
+            <div id="daily-summary-list" class="space-y-3">
+                <!-- Se llenará con JS -->
+            </div>
+        </div>
+
+        <!-- 2. Resumen Semanal -->
+        <div class="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-6 theme-transition">
+            <h3 class="font-bold text-slate-800 dark:text-slate-100 mb-4 flex items-center gap-2">
+                <i class="fa-regular fa-calendar-days"></i> Resumen Semanal
+            </h3>
+            
+            <div class="bg-slate-50 dark:bg-slate-700/50 rounded-lg p-5 border border-slate-100 dark:border-slate-600">
+                <div class="flex justify-between items-start mb-4">
+                    <span class="font-medium text-slate-600 dark:text-slate-300 text-sm" id="week-range-text">Semana --/-- - --/--</span>
+                    <span class="font-bold text-lg" id="week-net-total">0.00%</span>
+                </div>
+                
+                <div class="grid grid-cols-4 gap-4 text-center">
+                    <div>
+                        <div class="text-xs text-slate-500 dark:text-slate-400 mb-1">Total Días</div>
+                        <div class="font-bold text-slate-800 dark:text-slate-200" id="week-total-days">0</div>
+                    </div>
+                    <div>
+                        <div class="text-xs text-green-600 dark:text-green-400 mb-1">Días Ganadores</div>
+                        <div class="font-bold text-green-600 dark:text-green-400" id="week-win-days">0</div>
+                    </div>
+                    <div>
+                        <div class="text-xs text-red-500 dark:text-red-400 mb-1">Días Perdedores</div>
+                        <div class="font-bold text-red-500 dark:text-red-400" id="week-loss-days">0</div>
+                    </div>
+                    <div>
+                        <div class="text-xs text-blue-500 dark:text-blue-400 mb-1">Tasa de Éxito</div>
+                        <div class="font-bold text-blue-600 dark:text-blue-400" id="week-win-rate">0.0%</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- JAVASCRIPT -->
+    <script>
+        // --- MODO OSCURO ---
+        function toggleTheme() {
+            const html = document.documentElement;
+            const icon = document.getElementById('theme-icon');
+            
+            if (html.classList.contains('dark')) {
+                html.classList.remove('dark');
+                icon.classList.remove('fa-sun');
+                icon.classList.add('fa-moon');
+                localStorage.setItem('theme', 'light');
+            } else {
+                html.classList.add('dark');
+                icon.classList.remove('fa-moon');
+                icon.classList.add('fa-sun');
+                localStorage.setItem('theme', 'dark');
+            }
+        }
+
+        // Cargar preferencia de tema al iniciar
+        (function loadTheme() {
+            const savedTheme = localStorage.getItem('theme');
+            const icon = document.getElementById('theme-icon');
+            if (savedTheme === 'dark') {
+                document.documentElement.classList.add('dark');
+                icon.classList.remove('fa-moon');
+                icon.classList.add('fa-sun');
+            }
+        })();
+
+        // --- LÓGICA DE TRADING ---
+        let currentData = { tps: [], sls: [] };
+        
+        const datePicker = document.getElementById('datePicker');
+        const today = new Date().toISOString().split('T')[0];
+        datePicker.value = today;
+
+        // Abrir el selector de fecha al pulsar la caja (soporta showPicker cuando está disponible)
+        (function enableDateWrapper() {
+            const wrapper = document.getElementById('date-picker-wrapper');
+            if (!wrapper) return;
+
+            const openPicker = (e) => {
+                // Evitar que el evento afecte a otros controles
+                e.preventDefault();
+                if (typeof datePicker.showPicker === 'function') {
+                    try { datePicker.showPicker(); } catch (err) { datePicker.focus(); }
+                } else {
+                    datePicker.focus();
+                }
+            };
+
+            wrapper.addEventListener('click', openPicker);
+            // Soporte teclado (Enter / Space)
+            wrapper.addEventListener('keydown', (ev) => {
+                if (ev.key === 'Enter' || ev.key === ' ') {
+                    openPicker(ev);
+                }
+            });
+        })();
+
+        loadData();
+
+        datePicker.addEventListener('change', () => {
+            loadData();
+            if(!document.getElementById('summaries-section').classList.contains('hidden')){
+                generateSummaries();
+            }
+        });
+
+        function loadData() {
+            const date = datePicker.value;
+            const storageKey = `trading_${date}`;
+            const stored = localStorage.getItem(storageKey);
+            currentData = stored ? JSON.parse(stored) : { tps: [], sls: [] };
+            renderUI();
+        }
+
+        function saveData() {
+            const date = datePicker.value;
+            const storageKey = `trading_${date}`;
+            localStorage.setItem(storageKey, JSON.stringify(currentData));
+            renderUI();
+            
+            if(!document.getElementById('summaries-section').classList.contains('hidden')){
+                generateSummaries();
+            }
+        }
+
+        function addEntry(type) {
+            const inputId = type === 'tp' ? 'tp-input' : 'sl-input';
+            const assetId = type === 'tp' ? 'tp-asset' : 'sl-asset'; // ID del Activo
+
+            const input = document.getElementById(inputId);
+            const assetInput = document.getElementById(assetId);
+
+            const value = parseFloat(input.value);
+            const asset = assetInput.value.trim().toUpperCase(); // Obtener activo
+
+            if (!value || value <= 0) {
+                showToast('Ingresa un porcentaje válido', 'error');
+                return;
+            }
+
+            const entry = { 
+                id: Date.now(), 
+                value: value, 
+                asset: asset || '---' // Guardar activo o guiones si está vacío
+            };
+
+            if (type === 'tp') currentData.tps.push(entry);
+            else currentData.sls.push(entry);
+
+            input.value = '';
+            assetInput.value = ''; // Limpiar campo activo
+            saveData();
+        }
+
+        function deleteEntry(type, id) {
+            if (type === 'tp') currentData.tps = currentData.tps.filter(item => item.id !== id);
+            else currentData.sls = currentData.sls.filter(item => item.id !== id);
+            saveData();
+        }
+
+        // Inicio de edición inline: muestra input + botones
+        function startEdit(type, id) {
+            // Cerrar cualquier editor abierto
+            document.querySelectorAll('.inline-editor').forEach(el => el.classList.add('hidden'));
+            document.querySelectorAll('.value-span').forEach(el => el.classList.remove('hidden'));
+
+            const valueSpan = document.getElementById(`value-${type}-${id}`);
+            const editor = document.getElementById(`editor-${type}-${id}`);
+            if (!valueSpan || !editor) return;
+
+            valueSpan.classList.add('hidden');
+            editor.classList.remove('hidden');
+            const inputs = editor.querySelectorAll('input');
+            const assetInput = inputs[0];
+            const valueInput = inputs[1];
+            const assetSpan = document.getElementById(`asset-${type}-${id}`);
+            if (assetInput) {
+                assetInput.value = assetSpan ? assetSpan.innerText.trim() : '';
+            }
+            if (valueInput) {
+                valueInput.value = valueSpan.dataset.value || valueSpan.innerText.replace('%','').replace('+','').replace('-','').trim();
+                valueInput.focus();
+                valueInput.select();
+            }
+        }
+
+        function cancelEdit(type, id) {
+            const valueSpan = document.getElementById(`value-${type}-${id}`);
+            const editor = document.getElementById(`editor-${type}-${id}`);
+            if (!valueSpan || !editor) return;
+            editor.classList.add('hidden');
+            valueSpan.classList.remove('hidden');
+        }
+
+        function saveEdit(type, id) {
+            const list = type === 'tp' ? currentData.tps : currentData.sls;
+            const item = list.find(i => i.id === id);
+            if (!item) return;
+
+            const editor = document.getElementById(`editor-${type}-${id}`);
+            if (!editor) return;
+            const inputs = editor.querySelectorAll('input');
+            const assetInput = inputs[0];
+            const valueInput = inputs[1];
+            if (!valueInput) return;
+
+            const newValue = parseFloat(valueInput.value);
+            if (isNaN(newValue) || newValue <= 0) {
+                showToast('Porcentaje inválido', 'error');
+                return;
+            }
+
+            // Actualizar asset si se proporcionó
+            if (assetInput) {
+                const newAsset = assetInput.value.trim().toUpperCase();
+                item.asset = newAsset || '---';
+            }
+
+            item.value = newValue;
+            saveData();
+        }
+
+        async function clearList(type) {
+            const ok = await showConfirmModal('¿Borrar historial de esta columna?');
+            if (ok) {
+                if (type === 'tp') currentData.tps = [];
+                else currentData.sls = [];
+                saveData();
+                showToast('Historial borrado', 'success');
+            }
+        }
+
+        async function clearAll() {
+            const ok = await showConfirmModal('¿Limpiar datos de hoy?');
+            if (ok) {
+                currentData = { tps: [], sls: [] };
+                saveData();
+                showToast('Datos de hoy limpiados', 'success');
+            }
+        }
+
+        // --- RENDERIZADO UI ---
+        function renderUI() {
+            renderList('tp', currentData.tps);
+            renderList('sl', currentData.sls);
+            updateTotals();
+        }
+
+        function renderList(type, list) {
+            const container = document.getElementById(type === 'tp' ? 'tp-list' : 'sl-list');
+            container.innerHTML = '';
+
+            if (list.length === 0) {
+                container.innerHTML = '<div class="text-center text-slate-300 dark:text-slate-600 text-sm py-4">No hay registros</div>';
+                return;
+            }
+
+            const valueColor = type === 'tp' ? 'text-green-500 dark:text-green-400' : 'text-red-500 dark:text-red-400';
+            const sign = type === 'tp' ? '+' : '-';
+
+            list.forEach(item => {
+                const row = document.createElement('div');
+                row.className = "flex justify-between items-center py-2 px-3 rounded hover:bg-slate-50 dark:hover:bg-slate-700/50 border border-transparent hover:border-slate-100 dark:hover:border-slate-600 transition group";
+                row.innerHTML = `
+                    <div class="flex items-center gap-3">
+                        <span id="asset-${type}-${item.id}" class="font-bold text-slate-700 dark:text-slate-200 text-xs bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 rounded">${item.asset}</span>
+                        <span id="value-${type}-${item.id}" data-value="${item.value}" class="value-span font-bold ${valueColor} text-sm">${sign}${item.value.toFixed(2)}%</span>
+                        <div id="editor-${type}-${item.id}" class="inline-editor hidden flex items-center gap-2">
+                            <input type="text" class="w-20 px-2 py-1 rounded text-sm border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100" placeholder="PAR" />
+                            <input type="number" step="0.01" min="0.01" class="w-20 px-2 py-1 rounded text-sm border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100" />
+                            <button onclick="saveEdit('${type}', ${item.id})" title="Guardar" class="text-black dark:text-white bg-slate-200 dark:bg-slate-700 px-2 py-1 rounded"><i class="fa-solid fa-floppy-disk"></i></button>
+                            <button onclick="cancelEdit('${type}', ${item.id})" title="Cancelar" class="text-slate-500 px-2 py-1 rounded"><i class="fa-solid fa-xmark"></i></button>
+                        </div>
+                    </div>
+                    <div class="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button onclick="startEdit('${type}', ${item.id})" title="Editar" class="text-slate-400 hover:text-slate-200 text-xs"><i class="fa-solid fa-pen-to-square"></i></button>
+                        <button onclick="deleteEntry('${type}', ${item.id})" title="Eliminar" class="text-red-300 hover:text-red-500 text-xs"><i class="fa-solid fa-xmark"></i></button>
+                    </div>
+                `;
+                container.appendChild(row);
+            });
+        }
+
+        function updateTotals() {
+            const tpTotal = currentData.tps.reduce((acc, curr) => acc + curr.value, 0);
+            const slTotal = currentData.sls.reduce((acc, curr) => acc + curr.value, 0);
+            const net = tpTotal - slTotal;
+
+            document.getElementById('tp-total-display').innerText = tpTotal.toFixed(2) + '%';
+            document.getElementById('sl-total-display').innerText = slTotal.toFixed(2) + '%';
+            document.getElementById('footer-tp').innerText = '+' + tpTotal.toFixed(2) + '%';
+            document.getElementById('footer-sl').innerText = '-' + slTotal.toFixed(2) + '%';
+            
+            const netEl = document.getElementById('footer-net');
+            const mainEl = document.getElementById('main-profit-display');
+
+            let sign = net > 0 ? '+' : '';
+            let colorClass = net > 0 ? 'text-green-500 dark:text-green-400' : (net < 0 ? 'text-red-500 dark:text-red-400' : 'text-slate-800 dark:text-slate-200');
+            let icon = net >= 0 ? 'fa-arrow-trend-up' : 'fa-arrow-trend-down';
+
+            netEl.innerText = sign + net.toFixed(2) + '%';
+            netEl.className = "font-bold text-lg " + colorClass;
+
+            mainEl.innerHTML = `<i class="fa-solid ${icon} mr-2 text-sm ${colorClass}"></i> Profit Total: <span class="${colorClass}">${sign}${net.toFixed(2)}%</span>`;
+        }
+
+        // --- RESÚMENES ---
+        function toggleSummaries() {
+            const section = document.getElementById('summaries-section');
+            const btn = document.getElementById('btn-toggle-summary');
+            
+            section.classList.toggle('hidden');
+
+            if (section.classList.contains('hidden')) {
+                btn.innerHTML = '<i class="fa-solid fa-chart-column"></i> Ver Resúmenes';
+            } else {
+                btn.innerHTML = '<i class="fa-solid fa-eye-slash"></i> Ocultar Resúmenes';
+                generateSummaries();
+            }
+        }
+
+        function generateSummaries() {
+            const selectedDate = new Date(datePicker.value + "T00:00:00");
+            const dayOfWeek = selectedDate.getDay() || 7; 
+            
+            const monday = new Date(selectedDate);
+            monday.setDate(selectedDate.getDate() - dayOfWeek + 1);
+            
+            const sunday = new Date(monday);
+            sunday.setDate(monday.getDate() + 6);
+
+            const options = { day: '2-digit', month: '2-digit' };
+            const rangeText = `Semana ${monday.toLocaleDateString('es-ES', options)} - ${sunday.toLocaleDateString('es-ES', options)}/${monday.getFullYear()}`;
+            document.getElementById('week-range-text').innerText = rangeText;
+
+            let weeklyNet = 0;
+            let totalDays = 0;
+            let winDays = 0;
+            let lossDays = 0;
+            const dailyListContainer = document.getElementById('daily-summary-list');
+            dailyListContainer.innerHTML = '';
+
+            for (let i = 0; i < 7; i++) {
+                const tempDate = new Date(monday);
+                tempDate.setDate(monday.getDate() + i);
+                const dateKey = tempDate.toISOString().split('T')[0];
+                
+                const rawData = localStorage.getItem(`trading_${dateKey}`);
+                if (rawData) {
+                    const data = JSON.parse(rawData);
+                    const dailyTp = data.tps.reduce((sum, item) => sum + item.value, 0);
+                    const dailySl = data.sls.reduce((sum, item) => sum + item.value, 0);
+                    
+                    if (data.tps.length > 0 || data.sls.length > 0) {
+                        const dailyNet = dailyTp - dailySl;
+                        weeklyNet += dailyNet;
+                        totalDays++;
+                        if (dailyNet > 0) winDays++;
+                        else if (dailyNet < 0) lossDays++;
+
+                        addDailyRow(tempDate, dailyTp, dailySl, dailyNet);
+                    }
+                }
+            }
+
+            const weekNetEl = document.getElementById('week-net-total');
+            weekNetEl.innerText = (weeklyNet > 0 ? '+' : '') + weeklyNet.toFixed(2) + '%';
+            weekNetEl.className = "font-bold text-lg " + (weeklyNet > 0 ? 'text-green-500 dark:text-green-400' : (weeklyNet < 0 ? 'text-red-500 dark:text-red-400' : 'text-slate-800 dark:text-slate-200'));
+
+            document.getElementById('week-total-days').innerText = totalDays;
+            document.getElementById('week-win-days').innerText = winDays;
+            document.getElementById('week-loss-days').innerText = lossDays;
+            const winRate = totalDays > 0 ? (winDays / totalDays) * 100 : 0;
+            document.getElementById('week-win-rate').innerText = winRate.toFixed(1) + '%';
+        }
+
+        function addDailyRow(dateObj, tp, sl, net) {
+            const container = document.getElementById('daily-summary-list');
+            const dateStr = dateObj.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
+            const dateCap = dateStr.charAt(0).toUpperCase() + dateStr.slice(1);
+
+            const netColor = net > 0 ? 'text-green-600 dark:text-green-400' : (net < 0 ? 'text-red-600 dark:text-red-400' : 'text-slate-600 dark:text-slate-300');
+            const dotColor = net > 0 ? 'text-green-500' : (net < 0 ? 'text-red-500' : 'text-gray-300');
+            const sign = net > 0 ? '+' : '';
+
+            const div = document.createElement('div');
+            div.className = "bg-slate-50 dark:bg-slate-700/50 rounded p-3 flex justify-between items-center border border-slate-100 dark:border-slate-600";
+            div.innerHTML = `
+                <div class="flex items-center gap-3">
+                    <i class="fa-solid fa-circle text-[10px] ${dotColor}"></i>
+                    <div>
+                        <div class="text-sm font-bold text-slate-700 dark:text-slate-200">${dateCap}</div>
+                        <div class="text-xs text-slate-400">TP: +${tp.toFixed(2)}% | SL: -${sl.toFixed(2)}%</div>
+                    </div>
+                </div>
+                <div class="font-bold ${netColor}">${sign}${net.toFixed(2)}%</div>
+            `;
+            container.appendChild(div);
+        }
+
+        /* --- MODALES Y TOASTS PERSONALIZADOS --- */
+        // Toast simple (info, success, error)
+        function showToast(message, type = 'info', duration = 3000) {
+            const container = document.getElementById('toast-container');
+            if (!container) return;
+            const el = document.createElement('div');
+            const base = 'rounded px-3 py-2 shadow-md flex items-center gap-3 text-sm';
+            let color = 'bg-slate-800 text-white';
+            if (type === 'success') color = 'bg-green-600 text-white';
+            if (type === 'error') color = 'bg-red-600 text-white';
+            if (type === 'info') color = 'bg-slate-800 text-white';
+
+            el.className = `${base} ${color}`;
+            el.innerText = message;
+            container.appendChild(el);
+            setTimeout(() => {
+                el.classList.add('opacity-0');
+                setTimeout(() => el.remove(), 300);
+            }, duration);
+        }
+
+        // Modal confirm/prompt básico que retorna Promise<boolean>
+        function showConfirmModal(message) {
+            return new Promise(resolve => {
+                const overlay = document.getElementById('modal-overlay');
+                const msg = document.getElementById('modal-message');
+                const btnOk = document.getElementById('modal-confirm');
+                const btnCancel = document.getElementById('modal-cancel');
+                if (!overlay || !msg || !btnOk || !btnCancel) return resolve(false);
+
+                msg.innerText = message;
+                overlay.classList.remove('hidden');
+
+                const cleanup = () => {
+                    overlay.classList.add('hidden');
+                    btnOk.removeEventListener('click', onOk);
+                    btnCancel.removeEventListener('click', onCancel);
+                };
+
+                const onOk = () => { cleanup(); resolve(true); };
+                const onCancel = () => { cleanup(); resolve(false); };
+
+                btnOk.addEventListener('click', onOk);
+                btnCancel.addEventListener('click', onCancel);
+            });
+        }
+    </script>
+    <!-- MODAL Y TOASTS (ELEMENTOS) -->
+    <div id="toast-container" class="fixed top-6 right-6 z-50 space-y-2"></div>
+
+    <div id="modal-overlay" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+        <div class="bg-white dark:bg-slate-800 rounded-lg w-11/12 max-w-md p-4 shadow-lg">
+            <div id="modal-message" class="text-slate-800 dark:text-slate-100 mb-4"></div>
+            <div class="flex justify-end gap-2">
+                <button id="modal-cancel" class="px-3 py-1 rounded border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200">Cancelar</button>
+                <button id="modal-confirm" class="px-3 py-1 rounded bg-blue-500 text-white">Aceptar</button>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
