@@ -61,11 +61,31 @@ datePicker.value = today;
 // Inicializar: carga rápida local y luego Firestore si está disponible
 loadData();
 // Intentar cargar desde Firestore cuando esté listo
-window.addEventListener('firebase-auth-ready', () => {
+window.addEventListener('firebase-auth-ready', async () => {
     // intenta cargar datos desde Firestore y actualizar UI
-    try { loadDataFirestore(); } catch (e) { /* ignore */ }
+    try { await loadDataFirestore(); } catch (e) { /* ignore */ }
     // actualizar visibilidad de botones auth
     updateAuthUI();
+
+    // Si el usuario está autenticado con cuenta (no anónima) y hay datos locales,
+    // mostrar aviso y habilitar botón de 'Sincronizar ahora' para migrar local->Firestore.
+    try {
+        const uid = window._firebase && window._firebase.uid;
+        const user = window._firebase && window._firebase.auth && window._firebase.auth.currentUser;
+        const syncBtn = document.getElementById('btn-sync-now');
+        const localKeys = getLocalTradingKeys();
+        if (syncBtn) syncBtn.classList.add('hidden');
+
+        if (uid && user && !user.isAnonymous) {
+            // mostrar botón si hay datos locales pendientes
+            if (localKeys.length > 0) {
+                if (syncBtn) syncBtn.classList.remove('hidden');
+                showToast('Se han detectado datos locales. Pulsa "Sincronizar ahora" para subirlos a tu cuenta.', 'info', 5000);
+            }
+        }
+    } catch (e) {
+        console.warn('Error comprobando migración local->firestore', e);
+    }
 });
 
 // También intenta cuando firebase-init.js fue cargado antes
@@ -207,6 +227,86 @@ async function saveDataFirestore() {
         console.error('Error guardando en Firestore', err);
         throw err;
     }
+}
+
+// --- MIGRACIÓN localStorage -> Firestore ---
+function getLocalTradingKeys() {
+    const keys = [];
+    for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (!k) continue;
+        const m = k.match(/^trading_(\d{4}-\d{2}-\d{2})$/);
+        if (m) keys.push(m[1]);
+    }
+    return keys.sort();
+}
+
+async function migrateLocalToFirestore(confirmIfNeeded = true) {
+    const localDates = getLocalTradingKeys();
+    if (localDates.length === 0) {
+        showToast('No hay datos locales para sincronizar', 'info');
+        return;
+    }
+
+    const uid = window._firebase && window._firebase.uid;
+    if (!uid) {
+        showToast('Necesitas iniciar sesión para sincronizar', 'error');
+        return;
+    }
+
+    if (confirmIfNeeded) {
+        const ok = await showConfirmModal(`Se encontraron ${localDates.length} día(s) con datos en este navegador. ¿Deseas subirlos a tu cuenta en la nube?`);
+        if (!ok) return;
+    }
+
+    try {
+        if (window.ensureFirestoreOnline) await window.ensureFirestoreOnline();
+    } catch (e) {
+        console.warn('No se pudo asegurar red antes de migrar:', e);
+    }
+
+    const db = window._firebase.db;
+    let migrated = 0;
+    for (const dateKey of localDates) {
+        try {
+            const raw = localStorage.getItem(`trading_${dateKey}`);
+            if (!raw) continue;
+            const data = JSON.parse(raw);
+
+            const docRef = window.firebaseFirestoreDoc(db, 'users', uid, 'journals', dateKey);
+            const snap = await window.firebaseFirestoreGetDoc(docRef);
+            if (snap && snap.exists && snap.exists()) {
+                // Si ya existe en Firestore y no está vacío, saltar
+                const existing = snap.data();
+                const emptyExisting = (!existing || ((!existing.tps || existing.tps.length===0) && (!existing.sls || existing.sls.length===0)));
+                const emptyLocal = ((!data.tps || data.tps.length===0) && (!data.sls || data.sls.length===0));
+                if (!emptyExisting) {
+                    console.log('Saltando', dateKey, 'ya existe en Firestore');
+                    continue;
+                }
+                if (emptyLocal) continue;
+            }
+
+            await window.firebaseFirestoreSetDoc(docRef, data);
+            migrated++;
+        } catch (err) {
+            console.warn('Error migrando', dateKey, err);
+        }
+    }
+
+    if (migrated > 0) showToast(`Sincronizados ${migrated} día(s) a Firestore`, 'success');
+    else showToast('No se migraron datos (ya existían o estaban vacíos)', 'info');
+
+    // refrescar UI con datos desde Firestore si el datePicker cae en un día migrado
+    await loadDataFirestore();
+}
+
+// Handler público llamado desde el botón 'Sincronizar ahora'
+function promptMigrateLocalToFirestore() {
+    migrateLocalToFirestore(true).catch(err => {
+        console.error('migrateLocalToFirestore error', err);
+        showToast('Error durante la sincronización', 'error');
+    });
 }
 
 function addEntry(type) {
