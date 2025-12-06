@@ -145,3 +145,61 @@ window.signOutUser = async function() {
     console.error('Error signOut:', err);
   }
 };
+
+// --- Helpers de diagnóstico ---
+window.debug_printUid = function() {
+  console.log('debug: current uid =', window._firebase && window._firebase.uid);
+  return window._firebase && window._firebase.uid;
+};
+
+window.debug_listJournalDates = async function() {
+  if (!window._firebase || !window._firebase.db) {
+    console.warn('Firestore no inicializado');
+    return null;
+  }
+  const uid = window._firebase.uid;
+  if (!uid) {
+    console.warn('No hay uid (usuario no autenticado)');
+    return null;
+  }
+  try {
+    const mod = await import('https://www.gstatic.com/firebasejs/12.6.0/firebase-firestore.js');
+    const { collection, getDocs } = mod;
+    const collRef = collection(window._firebase.db, 'users', uid, 'journals');
+    const snap = await getDocs(collRef);
+    console.log('debug: documents found =', snap.size);
+    const out = [];
+    snap.forEach(d => { console.log(d.id, d.data()); out.push({ id: d.id, data: d.data() }); });
+    return out;
+  } catch (err) {
+    console.error('debug_listJournalDates error:', err);
+    throw err;
+  }
+};
+
+window.debug_getJournal = async function(dateKey) {
+  if (!window._firebase || !window._firebase.db) {
+    console.warn('Firestore no inicializado');
+    return null;
+  }
+  const uid = window._firebase.uid;
+  if (!uid) {
+    console.warn('No hay uid (usuario no autenticado)');
+    return null;
+  }
+  if (!dateKey) {
+    console.warn('Pasa una fecha en formato YYYY-MM-DD');
+    return null;
+  }
+  try {
+    const mod = await import('https://www.gstatic.com/firebasejs/12.6.0/firebase-firestore.js');
+    const { doc, getDoc } = mod;
+    const ref = doc(window._firebase.db, 'users', uid, 'journals', dateKey);
+    const snap = await getDoc(ref);
+    console.log('debug_getJournal', dateKey, snap && snap.exists && snap.exists() ? snap.data() : null);
+    return snap;
+  } catch (err) {
+    console.error('debug_getJournal error:', err);
+    throw err;
+  }
+};
