@@ -569,11 +569,58 @@ async function clearList(type) {
 }
 
 async function clearAll() {
-    const ok = await showConfirmModal('¿Limpiar datos de hoy?');
-    if (ok) {
-        currentData = { tps: [], sls: [] };
-        saveData();
-        showToast('Datos de hoy limpiados', 'success');
+    const ok = await showConfirmModal('¿Eliminar todos los datos locales y en la nube? Esta acción es irreversible. ¿Deseas continuar?');
+    if (!ok) return;
+
+    // 1) Borrar todas las claves locales tipo trading_YYYY-MM-DD
+    let removedLocal = 0;
+    // iterar en reversa para evitar problemas al eliminar mientras se recorre
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+        try {
+            const k = localStorage.key(i);
+            if (!k) continue;
+            if (k.startsWith('trading_')) {
+                localStorage.removeItem(k);
+                removedLocal++;
+            }
+        } catch (e) {
+            console.warn('Error borrando clave localStorage', e);
+        }
+    }
+
+    // Reset UI state y datos en memoria
+    currentData = { tps: [], sls: [] };
+    renderUI();
+    saveData(); // también intentará sincronizar/actualizar estado
+
+    showToast(removedLocal > 0 ? `Eliminados ${removedLocal} día(s) en este navegador` : 'No se encontraron datos locales', 'success', 2200);
+
+    // 2) Si estamos autenticados, intentar eliminar documentos en Firestore
+    try {
+        const uid = window._firebase && window._firebase.uid;
+        const db = window._firebase && window._firebase.db;
+        if (uid && db) {
+            // Usar import dinámico para disponer de deleteDoc/getDocs
+            const mod = await import('https://www.gstatic.com/firebasejs/12.6.0/firebase-firestore.js');
+            const { collection, getDocs, doc, deleteDoc } = mod;
+            const collRef = collection(db, 'users', uid, 'journals');
+            const snap = await getDocs(collRef);
+            let deleted = 0;
+            for (const d of snap.docs) {
+                try {
+                    await deleteDoc(doc(db, 'users', uid, 'journals', d.id));
+                    deleted++;
+                } catch (err) {
+                    console.warn('No se pudo borrar documento', d.id, err);
+                }
+            }
+            showToast(`Eliminados ${deleted} documento(s) en la nube`, 'success', 2400);
+            // actualizar listeners/UI
+            loadDataFirestore().catch(()=>{});
+        }
+    } catch (err) {
+        console.error('Error eliminando datos en la nube', err);
+        showToast('Ocurrió un error al eliminar datos en la nube', 'error', 4000);
     }
 }
 
@@ -657,6 +704,13 @@ function toggleSummaries() {
     }
 }
 async function generateSummaries() {
+    // Evitar ejecuciones concurrentes que pueden producir duplicados en la lista
+    if (window._isGeneratingSummaries) {
+        console.log('generateSummaries: ya en ejecución, omitiendo llamada duplicada');
+        return;
+    }
+    window._isGeneratingSummaries = true;
+    try {
     const selectedDate = new Date(datePicker.value + "T00:00:00");
     const dayOfWeek = selectedDate.getDay() || 7; 
     
@@ -727,6 +781,9 @@ async function generateSummaries() {
     document.getElementById('week-loss-days').innerText = lossDays;
     const winRate = totalDays > 0 ? (winDays / totalDays) * 100 : 0;
     document.getElementById('week-win-rate').innerText = winRate.toFixed(1) + '%';
+    } finally {
+        window._isGeneratingSummaries = false;
+    }
 }
 
 function addDailyRow(dateObj, tp, sl, net) {
