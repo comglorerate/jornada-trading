@@ -131,18 +131,7 @@ p { color: var(--muted-2); line-height: 1.6; }
 .dark .auth-btn-ghost { color: #e6eef8; }
 .auth-icon { width: 16px; height: 16px; display: inline-block; }
 
-/* Special styling for sync buttons to make them more visible */
-#btn-sync-now, #btn-sync-now-mobile {
-    background: var(--primary);
-    color: #ffffff;
-    border: none;
-    padding: 0.55rem 0.95rem;
-    border-radius: 0.75rem;
-    box-shadow: 0 10px 18px rgba(37, 99, 235, 0.14);
-    font-weight: 600;
-}
-#btn-sync-now:hover, #btn-sync-now-mobile:hover { transform: translateY(-1px); background: var(--primary-strong); }
-#btn-sync-now i, #btn-sync-now-mobile i { width: 16px; display: inline-block; margin-right: 0.45rem; }
+/* Special styling for sync buttons was removed when the buttons were deleted */
 
 /* Danger variant for sign out (applied via additional class on the button) */
 .auth-btn-danger { color: var(--danger); background: transparent; border: 1px solid rgba(185,28,28,0.12); }

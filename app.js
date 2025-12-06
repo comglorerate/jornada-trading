@@ -886,6 +886,23 @@ function updateAuthUI() {
         statusSync.classList.add('bg-gray-400');
         statusSync.title = 'Sincronización desconocida';
     }
+
+    // Mostrar el bloque "Resumen de Operación" únicamente para usuarios autenticados (no anónimos)
+    try {
+        const summaryCard = document.getElementById('summary-card');
+        const summariesSection = document.getElementById('summaries-section');
+        const toggleBtn = document.getElementById('btn-toggle-summary');
+        const user = a && a.currentUser;
+        const isLoggedIn = !!(user && !user.isAnonymous);
+
+        if (summaryCard) summaryCard.classList.toggle('hidden', !isLoggedIn);
+        if (toggleBtn) toggleBtn.classList.toggle('hidden', !isLoggedIn);
+        // Asegurar que la sección desplegable de resúmenes esté oculta si el usuario no está logueado
+        if (summariesSection && !isLoggedIn) summariesSection.classList.add('hidden');
+    } catch (e) {
+        // Silenciar errores no críticos
+        console.warn('Error actualizando visibilidad del resumen según auth:', e);
+    }
 }
 
 // Toggle mobile menu visibility

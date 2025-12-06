@@ -91,7 +91,7 @@
 
             <!-- Controles para desktop (ocultos en móvil) -->
             <div id="auth-controls" class="hidden md:flex items-center gap-2 ml-2">
-                <button id="btn-sync-now" onclick="promptMigrateLocalToFirestore()" class="ml-3 auth-btn auth-btn-outline hidden">Sincronizar ahora</button>
+                
                 <button id="btn-signout" onclick="signOutUser()" class="auth-btn auth-btn-ghost auth-btn-danger hidden">Cerrar sesión</button>
             </div>
 
@@ -114,7 +114,7 @@
                     <button id="auth-cta-login-mobile" onclick="openAuthModal('login'); toggleMobileMenu();" class="auth-btn auth-btn-primary">Iniciar sesión</button>
 
                     <button id="theme-toggle-mobile" onclick="toggleTheme(); toggleMobileMenu();" class="auth-btn auth-btn-outline flex items-center gap-2"> <i class="fa-solid fa-moon theme-icon"></i> <span>Tema</span> </button>
-                    <button id="btn-sync-now-mobile" onclick="promptMigrateLocalToFirestore(); toggleMobileMenu();" class="auth-btn auth-btn-outline">Sincronizar ahora</button>
+                    
                     <button id="btn-signout-mobile" onclick="signOutUser(); toggleMobileMenu();" class="auth-btn auth-btn-ghost auth-btn-danger hidden">Cerrar sesión</button>
                 </div>
             </div>
@@ -217,7 +217,7 @@
 
     <!-- RESUMEN DE OPERACIÓN (TARJETA INFERIOR) -->
     <div class="max-w-6xl mx-auto px-4 mt-8">
-        <div class="muted-card backdrop-blur theme-transition text-center p-8">
+        <div id="summary-card" class="muted-card backdrop-blur theme-transition text-center p-8">
             <h3 class="text-slate-700 dark:text-slate-300 font-bold mb-6 text-lg">Resumen de Operación</h3>
             
             <div class="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-8">
