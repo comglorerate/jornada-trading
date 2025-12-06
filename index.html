@@ -19,22 +19,40 @@
 <body class="bg-[#f0f4f8] dark:bg-slate-900 text-slate-800 dark:text-slate-100 pb-20 theme-transition">
 
     <!-- BOTÓN MODO OSCURO (Flotante o en Header) -->
-    <div class="absolute top-6 right-6 header-compact">
+    <div class="absolute top-6 right-6">
         <div class="flex items-center gap-2">
-            <button onclick="toggleTheme()" class="bg-white dark:bg-slate-800 text-slate-600 dark:text-yellow-400 p-2 rounded-full shadow-md border border-slate-200 dark:border-slate-700 hover:scale-110 transition" aria-label="Cambiar tema">
+            <button onclick="toggleTheme()" class="bg-white dark:bg-slate-800 text-slate-600 dark:text-yellow-400 p-2 rounded-full shadow-md border border-slate-200 dark:border-slate-700 hover:scale-110 transition">
                 <i id="theme-icon" class="fa-solid fa-moon"></i>
             </button>
-            <div id="auth-controls" class="flex items-center gap-2 ml-2">
-                <button id="btn-google" onclick="signInWithGoogle()" class="auth-btn auth-btn-primary hidden"> <i class="fa-brands fa-google auth-icon"></i> <span class="btn-label">Iniciar</span> </button>
-                <button id="btn-register" onclick="signInWithGoogle()" class="auth-btn auth-btn-outline hidden"> <i class="fa-solid fa-user-plus auth-icon"></i> <span class="btn-label">Regístrate</span></button>
-                <button id="btn-signout" onclick="signOutUser()" class="auth-btn auth-btn-ghost hidden"> <i class="fa-solid fa-right-from-bracket auth-icon"></i> <span class="btn-label">Cerrar</span></button>
+
+            <!-- Hamburger (solo móvil) -->
+            <button id="mobile-hamburger" onclick="toggleMobileMenu()" class="md:hidden p-2 rounded bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm">
+                <i class="fa-solid fa-bars"></i>
+            </button>
+
+            <!-- Controles para desktop (ocultos en móvil) -->
+            <div id="auth-controls" class="hidden md:flex items-center gap-2 ml-2">
+                <button id="btn-google" onclick="signInWithGoogle()" class="auth-btn auth-btn-primary hidden"> <i class="fa-brands fa-google auth-icon"></i> <span>Iniciar sesión</span> </button>
+                <button id="btn-register" onclick="signInWithGoogle()" class="auth-btn auth-btn-outline hidden">Regístrate</button>
+                <button id="btn-signout" onclick="signOutUser()" class="auth-btn auth-btn-ghost hidden">Cerrar sesión</button>
+                <button id="btn-sync-now" onclick="promptMigrateLocalToFirestore()" class="ml-3 auth-btn auth-btn-outline hidden">Sincronizar ahora</button>
             </div>
+
             <div id="auth-status" class="text-xs text-slate-600 dark:text-slate-300 ml-2 px-2 py-1 rounded bg-slate-100 dark:bg-slate-700">
                 <span id="auth-text">Anon</span>
                 <span id="auth-uid" class="ml-2 text-[10px] text-slate-400"></span>
                 <span id="auth-sync" class="ml-2 inline-block w-2 h-2 rounded-full bg-gray-400" title="Estado de sincronización"></span>
             </div>
-            <button id="btn-sync-now" onclick="promptMigrateLocalToFirestore()" class="ml-3 auth-btn auth-btn-outline hidden"> <i class="fa-solid fa-cloud-arrow-up auth-icon"></i> <span class="btn-label">Sync</span></button>
+
+            <!-- Menú móvil desplegable (solo visible en móviles) -->
+            <div id="mobile-menu" class="md:hidden hidden absolute top-16 right-4 z-50 bg-white dark:bg-slate-800 p-3 rounded-lg shadow-lg">
+                <div class="flex flex-col gap-2">
+                    <button id="btn-google-mobile" onclick="signInWithGoogle(); toggleMobileMenu();" class="auth-btn auth-btn-primary"> <i class="fa-brands fa-google auth-icon"></i> <span>Iniciar sesión</span> </button>
+                    <button id="btn-register-mobile" onclick="signInWithGoogle(); toggleMobileMenu();" class="auth-btn auth-btn-outline">Regístrate</button>
+                    <button id="btn-signout-mobile" onclick="signOutUser(); toggleMobileMenu();" class="auth-btn auth-btn-ghost">Cerrar sesión</button>
+                    <button id="btn-sync-now-mobile" onclick="promptMigrateLocalToFirestore(); toggleMobileMenu();" class="auth-btn auth-btn-outline">Sincronizar ahora</button>
+                </div>
+            </div>
         </div>
     </div>
 

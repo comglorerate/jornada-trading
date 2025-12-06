@@ -28,20 +28,3 @@ body { font-family: 'Inter', sans-serif; transition: background-color 0.3s, colo
 @media (max-width: 640px) {
     .auth-btn { padding: 0.35rem 0.6rem; font-size: 0.85rem; }
 }
-
-/* Header mobile tweaks */
-@media (max-width: 640px) {
-    /* Hide textual labels inside auth buttons to save space */
-    .btn-label { display: none; }
-    /* Make the auth icon slightly larger for tap targets */
-    .auth-icon { width: 18px; height: 18px; }
-    /* Compact the header container */
-    .header-compact { right: 0.6rem; top: 0.6rem; padding-right: 0.6rem; }
-    #auth-status { display: none; }
-    #btn-sync-now { padding: 0.25rem 0.5rem; font-size: 0.8rem; }
-}
-
-/* Make sure header items wrap nicely on very small devices */
-@media (max-width: 420px) {
-    .auth-btn { padding: 0.3rem; }
-}

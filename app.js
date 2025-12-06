@@ -677,20 +677,34 @@ function showConfirmModal(message) {
 // Actualiza botones y estado de auth en la UI
 function updateAuthUI() {
     const btnGoogle = document.getElementById('btn-google');
+    const btnGoogleMobile = document.getElementById('btn-google-mobile');
+    const btnRegister = document.getElementById('btn-register');
+    const btnRegisterMobile = document.getElementById('btn-register-mobile');
     const btnSignout = document.getElementById('btn-signout');
+    const btnSignoutMobile = document.getElementById('btn-signout-mobile');
+    const btnSync = document.getElementById('btn-sync-now');
+    const btnSyncMobile = document.getElementById('btn-sync-now-mobile');
     const status = document.getElementById('auth-status');
     const statusText = document.getElementById('auth-text');
     const statusUid = document.getElementById('auth-uid');
     const statusSync = document.getElementById('auth-sync');
-    if (!btnGoogle || !btnSignout || !status || !statusText || !statusUid || !statusSync) return;
+    if (!status || !statusText || !statusUid || !statusSync) return;
 
     const a = window._firebase && window._firebase.auth;
     const uid = window._firebase && window._firebase.uid;
 
     // Mostrar u ocultar botones según estado
     if (a && uid) {
-        btnGoogle.classList.add('hidden');
-        btnSignout.classList.remove('hidden');
+        // Desktop
+        if (btnGoogle) btnGoogle.classList.add('hidden');
+        if (btnRegister) btnRegister.classList.add('hidden');
+        if (btnSignout) btnSignout.classList.remove('hidden');
+        if (btnSync) btnSync.classList.remove('hidden');
+        // Mobile
+        if (btnGoogleMobile) btnGoogleMobile.classList.add('hidden');
+        if (btnRegisterMobile) btnRegisterMobile.classList.add('hidden');
+        if (btnSignoutMobile) btnSignoutMobile.classList.remove('hidden');
+        if (btnSyncMobile) btnSyncMobile.classList.remove('hidden');
         status.classList.remove('hidden');
 
         const user = a.currentUser;
@@ -698,9 +712,11 @@ function updateAuthUI() {
         if (user && user.isAnonymous) {
             statusText.innerText = 'Anon (anónimo)';
             if (btnRegister) btnRegister.classList.remove('hidden');
+            if (btnRegisterMobile) btnRegisterMobile.classList.remove('hidden');
         } else if (user && !user.isAnonymous && user.email) {
             statusText.innerText = user.email;
             if (btnRegister) btnRegister.classList.add('hidden');
+            if (btnRegisterMobile) btnRegisterMobile.classList.add('hidden');
         } else {
             statusText.innerText = 'Anon';
         }
@@ -733,8 +749,12 @@ function updateAuthUI() {
             statusSync.title = 'Sincronización desconocida';
         }
     } else {
-        btnGoogle.classList.remove('hidden');
-        btnSignout.classList.add('hidden');
+        if (btnGoogle) btnGoogle.classList.remove('hidden');
+        if (btnGoogleMobile) btnGoogleMobile.classList.remove('hidden');
+        if (btnSignout) btnSignout.classList.add('hidden');
+        if (btnSignoutMobile) btnSignoutMobile.classList.add('hidden');
+        if (btnSync) btnSync.classList.add('hidden');
+        if (btnSyncMobile) btnSyncMobile.classList.add('hidden');
         status.classList.remove('hidden');
         statusText.innerText = 'No conectado';
         statusUid.innerText = '';
@@ -742,6 +762,17 @@ function updateAuthUI() {
         statusSync.classList.remove('bg-red-400');
         statusSync.classList.add('bg-gray-400');
         statusSync.title = 'Sincronización desconocida';
+    }
+}
+
+// Toggle mobile menu visibility
+function toggleMobileMenu() {
+    const menu = document.getElementById('mobile-menu');
+    if (!menu) return;
+    if (menu.classList.contains('hidden')) {
+        menu.classList.remove('hidden');
+    } else {
+        menu.classList.add('hidden');
     }
 }
 
