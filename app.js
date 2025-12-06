@@ -611,8 +611,8 @@ function renderList(type, list) {
                 </div>
             </div>
             <div class="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                <button onclick="startEdit('${type}', ${item.id})" title="Editar" class="text-slate-400 hover:text-slate-200 text-xs"><i class="fa-solid fa-pen-to-square"></i></button>
-                <button onclick="deleteEntry('${type}', ${item.id})" title="Eliminar" class="text-red-300 hover:text-red-500 text-xs"><i class="fa-solid fa-xmark"></i></button>
+                <button onclick="startEdit('${type}', ${item.id})" title="Editar" class="entry-action-btn entry-edit text-slate-400 hover:text-slate-50 text-xs"><i class="fa-solid fa-pen-to-square"></i></button>
+                <button onclick="deleteEntry('${type}', ${item.id})" title="Eliminar" class="entry-action-btn entry-delete text-red-300 hover:text-red-500 text-xs"><i class="fa-solid fa-xmark"></i></button>
             </div>
         `;
         container.appendChild(row);

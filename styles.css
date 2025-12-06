@@ -255,3 +255,26 @@ button[onclick^="addEntry"]:hover { background: var(--primary-strong); transform
 .stat-pill { background: var(--surface-muted); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 0.8rem 1rem; display: flex; justify-content: space-between; align-items: center; }
 
 .muted-card { background: var(--surface-muted); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-soft); }
+
+/* Estilos para botones de acción dentro de cada entrada (editar / eliminar) */
+.entry-action-btn {
+    width: 36px;
+    height: 36px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    padding: 0;
+    background: transparent;
+    border: 1px solid transparent;
+    transition: background-color 0.15s ease, transform 0.12s ease, color 0.12s ease;
+    margin-left: 0.15rem;
+    min-width: 36px;
+}
+.entry-action-btn i { font-size: 14px; }
+.entry-action-btn:hover { background: rgba(15,23,42,0.06); transform: translateY(-1px); }
+.dark .entry-action-btn:hover { background: rgba(255,255,255,0.03); }
+.entry-delete { color: var(--danger); }
+.entry-delete:hover { background: rgba(220,38,38,0.08); color: #991b1b; }
+.entry-edit { color: rgba(15,23,42,0.6); }
+.entry-edit:hover { color: var(--text); }
