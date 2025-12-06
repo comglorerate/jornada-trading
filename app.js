@@ -60,6 +60,13 @@ datePicker.value = today;
 
 // Inicializar: carga rápida local y luego Firestore si está disponible
 loadData();
+// Si hay datos locales pendientes, mostrar el botón de sincronizar (aunque no haya auth aún)
+try {
+    const syncBtnInit = document.getElementById('btn-sync-now');
+    if (syncBtnInit && getLocalTradingKeys && getLocalTradingKeys().length > 0) {
+        syncBtnInit.classList.remove('hidden');
+    }
+} catch(e) { /* ignore if DOM not ready or function missing */ }
 // Intentar cargar desde Firestore cuando esté listo
 window.addEventListener('firebase-auth-ready', async () => {
     // intenta cargar datos desde Firestore y actualizar UI
@@ -303,6 +310,24 @@ async function migrateLocalToFirestore(confirmIfNeeded = true) {
 
 // Handler público llamado desde el botón 'Sincronizar ahora'
 function promptMigrateLocalToFirestore() {
+    const uid = window._firebase && window._firebase.uid;
+    if (!uid) {
+        // pedir al usuario que inicie sesión con Google para sincronizar entre dispositivos
+        showConfirmModal('Para sincronizar entre dispositivos necesitas iniciar sesión. ¿Deseas iniciar sesión con Google ahora?').then(ok => {
+            if (ok) {
+                try {
+                    signInWithGoogle();
+                    // after auth, the firebase-auth-ready listener will suggest sync again
+                    showToast('Tras iniciar sesión, pulsa de nuevo "Sincronizar ahora" para subir los datos locales.', 'info', 5000);
+                } catch (err) {
+                    console.error('Error iniciando signInWithGoogle desde prompt:', err);
+                    showToast('No se pudo iniciar sesión con Google', 'error');
+                }
+            }
+        });
+        return;
+    }
+
     migrateLocalToFirestore(true).catch(err => {
         console.error('migrateLocalToFirestore error', err);
         showToast('Error durante la sincronización', 'error');
