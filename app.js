@@ -18,9 +18,10 @@ function toggleTheme() {
 (function loadTheme() {
     const savedTheme = localStorage.getItem('theme');
     const icons = Array.from(document.querySelectorAll('.theme-icon'));
-    if (savedTheme === 'dark') {
+    if (savedTheme === 'dark' || !savedTheme) {
         document.documentElement.classList.add('dark');
         icons.forEach(ic => { ic.classList.remove('fa-moon'); ic.classList.add('fa-sun'); });
+        if (!savedTheme) localStorage.setItem('theme', 'dark');
     }
 })();
 
