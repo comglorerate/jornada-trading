@@ -796,7 +796,8 @@ function addDailyRow(dateObj, tp, sl, net) {
     const sign = net > 0 ? '+' : '';
 
     const div = document.createElement('div');
-    div.className = "bg-slate-50 dark:bg-slate-700/50 rounded p-3 flex justify-between items-center border border-slate-100 dark:border-slate-600";
+    // Hacer la fila clicable para navegar al día
+    div.className = "bg-slate-50 dark:bg-slate-700/50 rounded p-3 flex justify-between items-center border border-slate-100 dark:border-slate-600 cursor-pointer hover:shadow-md";
     div.innerHTML = `
         <div class="flex items-center gap-3">
             <i class="fa-solid fa-circle text-[10px] ${dotColor}"></i>
@@ -807,6 +808,30 @@ function addDailyRow(dateObj, tp, sl, net) {
         </div>
         <div class="font-bold ${netColor}">${sign}${net.toFixed(2)}%</div>
     `;
+    // Asociar acción click: llevar al usuario al día correspondiente
+    try {
+        const dateKey = dateObj.toISOString().split('T')[0];
+        div.addEventListener('click', (e) => {
+            // Evitar que clicks en botones internos (si los hubiera) desencadenen navegación
+            if (e.target && (e.target.tagName === 'BUTTON' || e.target.closest && e.target.closest('button'))) return;
+            const picker = document.getElementById('datePicker');
+            if (picker) {
+                picker.value = dateKey;
+                try { localStorage.setItem(DATE_STORAGE_KEY, dateKey); } catch (err) { /* ignore */ }
+            }
+            // Cargar datos y ocultar resumen para mostrar la vista principal
+            try { loadData(); } catch (err) { console.warn('Error cargando datos tras click resumen', err); }
+            const summaries = document.getElementById('summaries-section');
+            if (summaries) summaries.classList.add('hidden');
+            const toggleBtn = document.getElementById('btn-toggle-summary');
+            if (toggleBtn) toggleBtn.innerHTML = '<i class="fa-solid fa-chart-column"></i> Ver Resúmenes';
+            // Llevar la vista al tope de la página para que el usuario vea el selector y las listas
+            try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch (e) {}
+        });
+    } catch (e) {
+        console.warn('addDailyRow: no se pudo asignar click al row', e);
+    }
+
     container.appendChild(div);
 }
 
