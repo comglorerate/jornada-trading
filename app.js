@@ -27,10 +27,13 @@ function toggleTheme() {
 
 // --- LÓGICA DE TRADING ---
 let currentData = { tps: [], sls: [] };
+const DATE_STORAGE_KEY = 'trading_selected_date';
 
 const datePicker = document.getElementById('datePicker');
 const today = new Date().toISOString().split('T')[0];
-datePicker.value = today;
+const restoredDate = localStorage.getItem(DATE_STORAGE_KEY);
+const initialDate = restoredDate || today;
+datePicker.value = initialDate;
 
 // Abrir el selector de fecha al pulsar la caja (soporta showPicker cuando está disponible)
 (function enableDateWrapper() {
@@ -92,11 +95,69 @@ if (window._firebase && window._firebase.uid !== undefined) {
 }
 
 datePicker.addEventListener('change', () => {
+    localStorage.setItem(DATE_STORAGE_KEY, datePicker.value);
     loadData();
     if(!document.getElementById('summaries-section').classList.contains('hidden')){
         generateSummaries();
     }
 });
+
+let _unsubscribeJournalCollectionListener = null;
+
+function ensureJournalCollectionListener() {
+    if (!window._firebase || !window._firebase.db) return;
+    const uid = window._firebase.uid;
+    if (!uid) return;
+    if (_unsubscribeJournalCollectionListener) return;
+
+    const collRef = window.firebaseFirestoreCollection(window._firebase.db, 'users', uid, 'journals');
+    _unsubscribeJournalCollectionListener = window.firebaseFirestoreOnSnapshot(
+        collRef,
+        (snapshot) => {
+            snapshot.docChanges().forEach(change => {
+                const dateKey = change.doc.id;
+                if (!dateKey) return;
+                const storageKey = `trading_${dateKey}`;
+
+                if (change.type === 'removed') {
+                    localStorage.removeItem(storageKey);
+                    if (dateKey === datePicker.value) {
+                        currentData = { tps: [], sls: [] };
+                        renderUI();
+                        if(!document.getElementById('summaries-section').classList.contains('hidden')){
+                            generateSummaries();
+                        }
+                    }
+                    return;
+                }
+
+                const docData = change.doc.data() || {};
+                const normalized = {
+                    tps: Array.isArray(docData.tps) ? docData.tps : [],
+                    sls: Array.isArray(docData.sls) ? docData.sls : []
+                };
+                localStorage.setItem(storageKey, JSON.stringify(normalized));
+                if (dateKey === datePicker.value) {
+                    currentData = normalized;
+                    renderUI();
+                    if(!document.getElementById('summaries-section').classList.contains('hidden')){
+                        generateSummaries();
+                    }
+                }
+            });
+        },
+        (err) => {
+            console.warn('Listener de diarios cancelado:', err);
+        }
+    );
+}
+
+function cleanupJournalCollectionListener() {
+    if (typeof _unsubscribeJournalCollectionListener === 'function') {
+        _unsubscribeJournalCollectionListener();
+        _unsubscribeJournalCollectionListener = null;
+    }
+}
 
 function loadData() {
     const date = datePicker.value;
@@ -122,6 +183,8 @@ async function loadDataFirestore() {
 
     const uid = window._firebase.uid;
     if (!uid) return;
+
+    ensureJournalCollectionListener();
 
     const db = window._firebase.db;
     const docRef = window.firebaseFirestoreDoc(db, 'users', uid, 'journals', date);
@@ -841,16 +904,31 @@ function watchAuthChanges() {
     if (window._firebase && window._firebase.auth) {
         const auth = window._firebase.auth;
         auth.onAuthStateChanged(() => {
+            if (window._firebase && window._firebase.uid) {
+                ensureJournalCollectionListener();
+            } else {
+                cleanupJournalCollectionListener();
+            }
             updateAuthUI();
         });
         // initial update
         updateAuthUI();
+        if (window._firebase && window._firebase.uid) {
+            ensureJournalCollectionListener();
+        } else {
+            cleanupJournalCollectionListener();
+        }
     } else {
         window.addEventListener('firebase-auth-ready', () => {
             if (window._firebase && window._firebase.auth) {
                 window._firebase.auth.onAuthStateChanged(() => updateAuthUI());
             }
             updateAuthUI();
+            if (window._firebase && window._firebase.uid) {
+                ensureJournalCollectionListener();
+            } else {
+                cleanupJournalCollectionListener();
+            }
         }, { once: true });
     }
 }

@@ -4,6 +4,7 @@ import {
   getFirestore,
   enableIndexedDbPersistence,
   doc,
+  collection,
   getDoc,
   setDoc,
   updateDoc,
@@ -82,6 +83,7 @@ window._firebase = { db, auth, uid: null };
 
 // Wrappers para usar las funciones Firestore desde scripts no modulares
 window.firebaseFirestoreDoc = (...args) => doc(...args);
+window.firebaseFirestoreCollection = (...args) => collection(...args);
 window.firebaseFirestoreGetDoc = (ref) => getDoc(ref);
 window.firebaseFirestoreSetDoc = (ref, data, options) => setDoc(ref, data, options);
 window.firebaseFirestoreUpdateDoc = (ref, data) => updateDoc(ref, data);
