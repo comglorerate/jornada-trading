@@ -740,6 +740,8 @@ function showConfirmModal(message) {
 function updateAuthUI() {
     const authCtaLogin = document.getElementById('auth-cta-login');
     const authCtaRegister = document.getElementById('auth-cta-register');
+    const btnRegisterMobile = document.getElementById('btn-register-mobile');
+    const btnLoginMobile = document.getElementById('btn-login-mobile');
     const btnSignout = document.getElementById('btn-signout');
     const btnSignoutMobile = document.getElementById('btn-signout-mobile');
     const btnSync = document.getElementById('btn-sync-now');
@@ -762,6 +764,8 @@ function updateAuthUI() {
 
     if (a && uid) {
         toggleAuthCTAs(false);
+        if (btnRegisterMobile) btnRegisterMobile.classList.add('hidden');
+        if (btnLoginMobile) btnLoginMobile.classList.add('hidden');
         if (btnSignout) btnSignout.classList.remove('hidden');
         if (btnSync) btnSync.classList.remove('hidden');
         if (btnSignoutMobile) btnSignoutMobile.classList.remove('hidden');
@@ -801,6 +805,8 @@ function updateAuthUI() {
         }
     } else {
         toggleAuthCTAs(true);
+        if (btnRegisterMobile) btnRegisterMobile.classList.remove('hidden');
+        if (btnLoginMobile) btnLoginMobile.classList.remove('hidden');
         if (btnSignout) btnSignout.classList.add('hidden');
         if (btnSync) btnSync.classList.add('hidden');
         if (btnSignoutMobile) btnSignoutMobile.classList.add('hidden');
