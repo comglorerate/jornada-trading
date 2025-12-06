@@ -740,10 +740,10 @@ function showConfirmModal(message) {
 function updateAuthUI() {
     const authCtaLogin = document.getElementById('auth-cta-login');
     const authCtaRegister = document.getElementById('auth-cta-register');
-    const btnRegisterMobile = document.getElementById('btn-register-mobile');
-    const btnLoginMobile = document.getElementById('btn-login-mobile');
     const btnSignout = document.getElementById('btn-signout');
     const btnSignoutMobile = document.getElementById('btn-signout-mobile');
+    const btnRegisterMobile = document.getElementById('btn-register-mobile');
+    const btnLoginMobile = document.getElementById('btn-login-mobile');
     const btnSync = document.getElementById('btn-sync-now');
     const btnSyncMobile = document.getElementById('btn-sync-now-mobile');
     const status = document.getElementById('auth-status');
