@@ -15,16 +15,78 @@ body { font-family: 'Inter', sans-serif; transition: background-color 0.3s, colo
 }
 
 /* Auth button styles */
-.auth-btn { display: inline-flex; align-items: center; gap: 0.6rem; padding: 0.45rem 0.8rem; border-radius: 0.5rem; font-weight: 600; font-size: 0.9rem; cursor: pointer; transition: transform 0.12s ease, box-shadow 0.12s ease; }
+.auth-btn { display: inline-flex; align-items: center; gap: 0.6rem; padding: 0.45rem 0.8rem; border-radius: 0.6rem; font-weight: 600; font-size: 0.95rem; cursor: pointer; transition: transform 0.12s ease, box-shadow 0.12s ease, background-color 0.15s ease; }
 .auth-btn:active { transform: translateY(1px); }
-.auth-btn-primary { background: #2563eb; color: white; border: 1px solid rgba(37,99,235,0.9); box-shadow: 0 6px 18px rgba(37,99,235,0.12); }
-.auth-btn-primary:hover { filter: brightness(1.03); }
-.auth-btn-outline { background: transparent; color: #0f172a; border: 1px solid rgba(15,23,42,0.08); }
+.auth-btn-primary { background: #3b82f6; color: white; border: 1px solid rgba(59,130,246,0.9); box-shadow: 0 6px 14px rgba(59,130,246,0.12); }
+.auth-btn-primary:hover { background: #2563eb; transform: translateY(-1px); }
+.auth-btn-outline { background: transparent; color: #0f172a; border: 1px solid rgba(15,23,42,0.08); padding: 0.45rem 0.9rem; border-radius: 0.6rem; }
 .dark .auth-btn-outline { color: #e6eef8; border-color: rgba(255,255,255,0.06); }
-.auth-btn-ghost { background: transparent; color: #0f172a; border: none; }
+.auth-btn-ghost { background: transparent; color: #0f172a; border: none; padding: 0.45rem 0.9rem; border-radius: 0.6rem; }
 /* Ensure ghost buttons are visible in dark mode */
 .dark .auth-btn-ghost { color: #e6eef8; }
 .auth-icon { width: 16px; height: 16px; display: inline-block; }
+
+/* Special styling for sync buttons to make them more visible */
+#btn-sync-now, #btn-sync-now-mobile {
+    background: #3b82f6; /* bg-blue-500 (Tailwind) to match '+ Agregar' */
+    color: #ffffff;
+    border: none;
+    padding: 0.5rem 0.95rem;
+    border-radius: 0.6rem;
+    box-shadow: 0 6px 14px rgba(59,130,246,0.06);
+    font-weight: 600;
+}
+#btn-sync-now:hover, #btn-sync-now-mobile:hover { transform: translateY(-1px); background: #2563eb; }
+#btn-sync-now i, #btn-sync-now-mobile i { width: 16px; display: inline-block; margin-right: 0.45rem; }
+
+/* Danger variant for sign out (applied via additional class on the button) */
+.auth-btn-danger { color: #b91c1c; background: transparent; border: 1px solid rgba(185,28,28,0.08); }
+.auth-btn-danger:hover { background: rgba(185,28,28,0.06); color: #991b1b; }
+.dark .auth-btn-danger { color: #fecaca; border-color: rgba(255,255,255,0.04); }
+.dark .auth-btn-danger:hover { background: rgba(255,255,255,0.04); color: #fecaca; }
+
+/* Keep ghost subtle but with a readable hover state */
+.auth-btn-ghost:hover { background: rgba(15,23,42,0.03); }
+
+
+/* ---------- Forma uniforme para todos los botones ---------- */
+button {
+    border-radius: 0.6rem; /* misma curvatura */
+    padding: 0.5rem 0.95rem; /* mismo padding base */
+    font-size: 0.95rem;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6rem;
+    min-height: 40px;
+}
+
+/* Asegurar que los botones que usan clases específicas mantengan sus colores
+   pero con la misma forma (sobrescribe utilidades Tailwind si es necesario). */
+.auth-cta, .auth-btn { border-radius: 0.6rem; padding: 0.5rem 0.95rem; }
+
+/* Mantener botones de ancho completo como antes (ej. .auth-cta en móvil) */
+@media (max-width: 640px) {
+    .auth-cta { width: 100%; }
+}
+
+/* Botones '+ Agregar' dentro de formularios: mantener forma uniforme
+   y color primario. Seleccionamos por el atributo onclick que llama a addEntry. */
+button[onclick^="addEntry"] {
+    background: #3b82f6; /* mismo azul */
+    color: #ffffff;
+    border: none;
+    padding: 0.5rem 0.95rem;
+    border-radius: 0.6rem;
+    box-shadow: 0 6px 14px rgba(59,130,246,0.08);
+    font-weight: 700;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+button[onclick^="addEntry"]:hover { background: #2563eb; transform: translateY(-1px); }
+
+
 
 /* Small responsive tweak */
 @media (max-width: 640px) {
@@ -32,7 +94,7 @@ body { font-family: 'Inter', sans-serif; transition: background-color 0.3s, colo
 }
 
 .auth-cta {
-    border-radius: 999px;
+    border-radius: 0.6rem;
     padding: 0.55rem 1.4rem;
     font-weight: 600;
     font-size: 0.95rem;
@@ -44,10 +106,11 @@ body { font-family: 'Inter', sans-serif; transition: background-color 0.3s, colo
     transition: transform 0.18s ease, box-shadow 0.2s ease, background-color 0.2s ease, color 0.2s ease;
 }
 .auth-cta-primary {
-    background: linear-gradient(135deg, #2563eb, #1d4ed8);
+    background: #3b82f6; /* same as +Agregar and Sync */
     color: #ffffff;
-    box-shadow: 0 12px 20px rgba(37, 99, 235, 0.25);
+    box-shadow: 0 10px 18px rgba(59,130,246,0.14);
 }
+.auth-cta-primary:hover { background: #2563eb; transform: translateY(-1px); }
 .auth-cta-secondary {
     background-color: rgba(15, 23, 42, 0.03);
     border: 1px solid rgba(15, 23, 42, 0.15);
@@ -79,4 +142,22 @@ body { font-family: 'Inter', sans-serif; transition: background-color 0.3s, colo
     .auth-cta {
         width: 100%;
     }
+}
+
+/* Modal submit button - estilo específico para mantener apariencia consistente */
+#auth-modal-submit {
+    display: block;
+    width: 100%;
+    background: #2563eb; /* azul más oscuro para buen contraste en modal */
+    color: #ffffff;
+    padding: 0.65rem 1rem;
+    border-radius: 0.5rem; /* coincide con `rounded-lg` */
+    font-weight: 700;
+    border: none;
+    box-shadow: 0 10px 20px rgba(37,99,235,0.12);
+    text-align: center;
+}
+#auth-modal-submit:hover {
+    background: #1d4ed8;
+    transform: translateY(-1px);
 }

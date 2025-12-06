@@ -92,7 +92,7 @@
             <!-- Controles para desktop (ocultos en móvil) -->
             <div id="auth-controls" class="hidden md:flex items-center gap-2 ml-2">
                 <button id="btn-sync-now" onclick="promptMigrateLocalToFirestore()" class="ml-3 auth-btn auth-btn-outline hidden">Sincronizar ahora</button>
-                <button id="btn-signout" onclick="signOutUser()" class="auth-btn auth-btn-ghost hidden">Cerrar sesión</button>
+                <button id="btn-signout" onclick="signOutUser()" class="auth-btn auth-btn-ghost auth-btn-danger hidden">Cerrar sesión</button>
             </div>
 
             <div id="auth-status" class="text-xs text-slate-600 dark:text-slate-300 ml-2 px-2 py-1 rounded bg-slate-100 dark:bg-slate-700 flex items-center gap-2">
@@ -115,7 +115,7 @@
 
                     <button id="theme-toggle-mobile" onclick="toggleTheme(); toggleMobileMenu();" class="auth-btn auth-btn-outline flex items-center gap-2"> <i class="fa-solid fa-moon theme-icon"></i> <span>Tema</span> </button>
                     <button id="btn-sync-now-mobile" onclick="promptMigrateLocalToFirestore(); toggleMobileMenu();" class="auth-btn auth-btn-outline">Sincronizar ahora</button>
-                    <button id="btn-signout-mobile" onclick="signOutUser(); toggleMobileMenu();" class="auth-btn auth-btn-ghost hidden">Cerrar sesión</button>
+                    <button id="btn-signout-mobile" onclick="signOutUser(); toggleMobileMenu();" class="auth-btn auth-btn-ghost auth-btn-danger hidden">Cerrar sesión</button>
                 </div>
             </div>
         </div>
