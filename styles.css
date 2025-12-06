@@ -13,3 +13,18 @@ body { font-family: 'Inter', sans-serif; transition: background-color 0.3s, colo
 .theme-transition {
     transition: background-color 0.3s, border-color 0.3s, color 0.3s;
 }
+
+/* Auth button styles */
+.auth-btn { display: inline-flex; align-items: center; gap: 0.6rem; padding: 0.45rem 0.8rem; border-radius: 0.5rem; font-weight: 600; font-size: 0.9rem; cursor: pointer; transition: transform 0.12s ease, box-shadow 0.12s ease; }
+.auth-btn:active { transform: translateY(1px); }
+.auth-btn-primary { background: #2563eb; color: white; border: 1px solid rgba(37,99,235,0.9); box-shadow: 0 6px 18px rgba(37,99,235,0.12); }
+.auth-btn-primary:hover { filter: brightness(1.03); }
+.auth-btn-outline { background: transparent; color: #0f172a; border: 1px solid rgba(15,23,42,0.08); }
+.dark .auth-btn-outline { color: #e6eef8; border-color: rgba(255,255,255,0.06); }
+.auth-btn-ghost { background: transparent; color: #0f172a; border: none; }
+.auth-icon { width: 16px; height: 16px; display: inline-block; }
+
+/* Small responsive tweak */
+@media (max-width: 640px) {
+    .auth-btn { padding: 0.35rem 0.6rem; font-size: 0.85rem; }
+}

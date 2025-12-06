@@ -58,7 +58,21 @@ datePicker.value = today;
     });
 })();
 
+// Inicializar: carga rápida local y luego Firestore si está disponible
 loadData();
+// Intentar cargar desde Firestore cuando esté listo
+window.addEventListener('firebase-auth-ready', () => {
+    // intenta cargar datos desde Firestore y actualizar UI
+    try { loadDataFirestore(); } catch (e) { /* ignore */ }
+    // actualizar visibilidad de botones auth
+    updateAuthUI();
+});
+
+// También intenta cuando firebase-init.js fue cargado antes
+if (window._firebase && window._firebase.uid !== undefined) {
+    // small delay to let auth settle
+    setTimeout(() => { loadDataFirestore().catch(()=>{}); updateAuthUI(); }, 200);
+}
 
 datePicker.addEventListener('change', () => {
     loadData();
@@ -75,14 +89,64 @@ function loadData() {
     renderUI();
 }
 
+// Carga desde Firestore si hay auth/db, y reemplaza currentData
+async function loadDataFirestore() {
+    const date = datePicker.value;
+    if (!window._firebase || !window._firebase.db) return;
+    if (!window._firebase.uid) {
+        await new Promise(res => {
+            window.addEventListener('firebase-auth-ready', res, { once: true });
+        });
+    }
+    const uid = window._firebase.uid;
+    if (!uid) return;
+    const db = window._firebase.db;
+    try {
+        const docRef = window.firebaseFirestoreDoc(db, 'users', uid, 'journals', date);
+        const snap = await window.firebaseFirestoreGetDoc(docRef);
+        if (snap && snap.exists && snap.exists()) {
+            currentData = snap.data();
+        } else {
+            currentData = { tps: [], sls: [] };
+        }
+        renderUI();
+    } catch (err) {
+        console.error('Error cargando desde Firestore', err);
+    }
+}
+
 function saveData() {
     const date = datePicker.value;
     const storageKey = `trading_${date}`;
+    // Siempre mantén un cache local por velocidad
     localStorage.setItem(storageKey, JSON.stringify(currentData));
     renderUI();
-    
+
+    // Guardar también en Firestore si está disponible
+    saveDataFirestore().catch(err => console.warn('No se pudo guardar en Firestore:', err));
+
     if(!document.getElementById('summaries-section').classList.contains('hidden')){
         generateSummaries();
+    }
+}
+
+// Guarda en Firestore (async)
+async function saveDataFirestore() {
+    const date = datePicker.value;
+    if (!window._firebase || !window._firebase.db) return;
+    if (!window._firebase.uid) {
+        // esperar auth
+        await new Promise(res => window.addEventListener('firebase-auth-ready', res, { once: true }));
+    }
+    const uid = window._firebase.uid;
+    if (!uid) return;
+    const db = window._firebase.db;
+    try {
+        const docRef = window.firebaseFirestoreDoc(db, 'users', uid, 'journals', date);
+        await window.firebaseFirestoreSetDoc(docRef, currentData);
+    } catch (err) {
+        console.error('Error guardando en Firestore', err);
+        throw err;
     }
 }
 
@@ -93,6 +157,7 @@ function addEntry(type) {
     const input = document.getElementById(inputId);
     const assetInput = document.getElementById(assetId);
 
+        const btnRegister = document.getElementById('btn-register');
     const value = parseFloat(input.value);
     const asset = assetInput.value.trim().toUpperCase(); // Obtener activo
 
@@ -281,8 +346,7 @@ function toggleSummaries() {
         generateSummaries();
     }
 }
-
-function generateSummaries() {
+async function generateSummaries() {
     const selectedDate = new Date(datePicker.value + "T00:00:00");
     const dayOfWeek = selectedDate.getDay() || 7; 
     
@@ -307,20 +371,38 @@ function generateSummaries() {
         const tempDate = new Date(monday);
         tempDate.setDate(monday.getDate() + i);
         const dateKey = tempDate.toISOString().split('T')[0];
-        
-        const rawData = localStorage.getItem(`trading_${dateKey}`);
-        if (rawData) {
-            const data = JSON.parse(rawData);
-            const dailyTp = data.tps.reduce((sum, item) => sum + item.value, 0);
-            const dailySl = data.sls.reduce((sum, item) => sum + item.value, 0);
-            
-            if (data.tps.length > 0 || data.sls.length > 0) {
+
+        // Intentar leer desde Firestore si está disponible
+        let data = null;
+        if (window._firebase && window._firebase.db && window._firebase.uid) {
+            try {
+                const db = window._firebase.db;
+                const uid = window._firebase.uid;
+                const docRef = window.firebaseFirestoreDoc(db, 'users', uid, 'journals', dateKey);
+                const snap = await window.firebaseFirestoreGetDoc(docRef);
+                if (snap && snap.exists && snap.exists()) {
+                    data = snap.data();
+                }
+            } catch (err) {
+                console.warn('No se pudo leer desde Firestore para', dateKey, err);
+            }
+        }
+
+        // Si no hay datos en Firestore, fallback a localStorage
+        if (!data) {
+            const rawData = localStorage.getItem(`trading_${dateKey}`);
+            if (rawData) data = JSON.parse(rawData);
+        }
+
+        if (data) {
+            const dailyTp = (data.tps || []).reduce((sum, item) => sum + item.value, 0);
+            const dailySl = (data.sls || []).reduce((sum, item) => sum + item.value, 0);
+            if ((data.tps && data.tps.length > 0) || (data.sls && data.sls.length > 0)) {
                 const dailyNet = dailyTp - dailySl;
                 weeklyNet += dailyNet;
                 totalDays++;
                 if (dailyNet > 0) winDays++;
                 else if (dailyNet < 0) lossDays++;
-
                 addDailyRow(tempDate, dailyTp, dailySl, dailyNet);
             }
         }
@@ -407,3 +489,95 @@ function showConfirmModal(message) {
         btnCancel.addEventListener('click', onCancel);
     });
 }
+
+// Actualiza botones y estado de auth en la UI
+function updateAuthUI() {
+    const btnGoogle = document.getElementById('btn-google');
+    const btnSignout = document.getElementById('btn-signout');
+    const status = document.getElementById('auth-status');
+    const statusText = document.getElementById('auth-text');
+    const statusUid = document.getElementById('auth-uid');
+    const statusSync = document.getElementById('auth-sync');
+    if (!btnGoogle || !btnSignout || !status || !statusText || !statusUid || !statusSync) return;
+
+    const a = window._firebase && window._firebase.auth;
+    const uid = window._firebase && window._firebase.uid;
+
+    // Mostrar u ocultar botones según estado
+    if (a && uid) {
+        btnGoogle.classList.add('hidden');
+        btnSignout.classList.remove('hidden');
+        status.classList.remove('hidden');
+
+        const user = a.currentUser;
+        // Si el usuario es anónimo, ofrecer la opción de registrarse (link con Google)
+        if (user && user.isAnonymous) {
+            statusText.innerText = 'Anon (anónimo)';
+            if (btnRegister) btnRegister.classList.remove('hidden');
+        } else if (user && !user.isAnonymous && user.email) {
+            statusText.innerText = user.email;
+            if (btnRegister) btnRegister.classList.add('hidden');
+        } else {
+            statusText.innerText = 'Anon';
+        }
+
+        // Mostrar uid abreviado
+        try {
+            const short = String(uid).length > 12 ? `${uid.slice(0,6)}...${uid.slice(-4)}` : uid;
+            statusUid.innerText = short;
+        } catch (e) {
+            statusUid.innerText = '';
+        }
+
+        // Indicador de sincronización (heurística): online + presencia de Firestore = verde
+        const online = navigator.onLine;
+        const hasDb = !!(window._firebase && window._firebase.db);
+        if (online && hasDb) {
+            statusSync.classList.remove('bg-gray-400');
+            statusSync.classList.remove('bg-red-400');
+            statusSync.classList.add('bg-green-400');
+            statusSync.title = 'Sincronización OK';
+        } else if (!online) {
+            statusSync.classList.remove('bg-gray-400');
+            statusSync.classList.remove('bg-green-400');
+            statusSync.classList.add('bg-red-400');
+            statusSync.title = 'Offline (sin conexión de red)';
+        } else {
+            statusSync.classList.remove('bg-green-400');
+            statusSync.classList.remove('bg-red-400');
+            statusSync.classList.add('bg-gray-400');
+            statusSync.title = 'Sincronización desconocida';
+        }
+    } else {
+        btnGoogle.classList.remove('hidden');
+        btnSignout.classList.add('hidden');
+        status.classList.remove('hidden');
+        statusText.innerText = 'No conectado';
+        statusUid.innerText = '';
+        statusSync.classList.remove('bg-green-400');
+        statusSync.classList.remove('bg-red-400');
+        statusSync.classList.add('bg-gray-400');
+        statusSync.title = 'Sincronización desconocida';
+    }
+}
+
+// Watch for auth changes when firebase becomes available
+function watchAuthChanges() {
+    if (window._firebase && window._firebase.auth) {
+        const auth = window._firebase.auth;
+        auth.onAuthStateChanged(() => {
+            updateAuthUI();
+        });
+        // initial update
+        updateAuthUI();
+    } else {
+        window.addEventListener('firebase-auth-ready', () => {
+            if (window._firebase && window._firebase.auth) {
+                window._firebase.auth.onAuthStateChanged(() => updateAuthUI());
+            }
+            updateAuthUI();
+        }, { once: true });
+    }
+}
+
+watchAuthChanges();
