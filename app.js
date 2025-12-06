@@ -296,7 +296,7 @@ async function saveData() {
             statusSync.classList.add('bg-green-400');
             statusSync.title = 'Sincronización OK';
         }
-        showToast('Guardado en Firestore', 'success', 1800);
+        showToast('sincronizado correctamente', 'success', 1800);
     } catch (err) {
         console.warn('No se pudo guardar en Firestore:', err);
         const statusSync = document.getElementById('auth-sync');
