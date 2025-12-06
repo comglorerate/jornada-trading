@@ -6,7 +6,8 @@ import {
   doc,
   getDoc,
   setDoc,
-  updateDoc
+  updateDoc,
+  onSnapshot
 } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-firestore.js";
 import { getAuth, signInAnonymously, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut, linkWithPopup, setPersistence, browserLocalPersistence } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-auth.js";
 
@@ -82,6 +83,7 @@ window.firebaseFirestoreDoc = (...args) => doc(...args);
 window.firebaseFirestoreGetDoc = (ref) => getDoc(ref);
 window.firebaseFirestoreSetDoc = (ref, data) => setDoc(ref, data);
 window.firebaseFirestoreUpdateDoc = (ref, data) => updateDoc(ref, data);
+window.firebaseFirestoreOnSnapshot = (ref, cb, errCb) => onSnapshot(ref, cb, errCb);
 
 onAuthStateChanged(auth, user => {
   window._firebase.uid = user ? user.uid : null;

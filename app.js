@@ -117,26 +117,79 @@ function loadData() {
 }
 
 // Carga desde Firestore si hay auth/db, y reemplaza currentData
+// Además, gestiona un listener en tiempo real para sincronizar entre dispositivos.
+let _unsubscribeJournalListener = null;
+
 async function loadDataFirestore() {
     const date = datePicker.value;
     if (!window._firebase || !window._firebase.db) return;
+
     if (!window._firebase.uid) {
         await new Promise(res => {
             window.addEventListener('firebase-auth-ready', res, { once: true });
         });
     }
+
     const uid = window._firebase.uid;
     if (!uid) return;
+
     const db = window._firebase.db;
+    const docRef = window.firebaseFirestoreDoc(db, 'users', uid, 'journals', date);
+
     try {
-        const docRef = window.firebaseFirestoreDoc(db, 'users', uid, 'journals', date);
+        // 1) Leer una vez para inicializar la UI
         const snap = await window.firebaseFirestoreGetDoc(docRef);
         if (snap && snap.exists && snap.exists()) {
-            currentData = snap.data();
+            currentData = snap.data() || { tps: [], sls: [] };
         } else {
             currentData = { tps: [], sls: [] };
         }
         renderUI();
+
+        // 2) Limpiar cualquier listener anterior
+        if (typeof _unsubscribeJournalListener === 'function') {
+            _unsubscribeJournalListener();
+            _unsubscribeJournalListener = null;
+        }
+
+        // 3) Suscribirse en tiempo real al documento actual
+        if (window.firebaseFirestoreOnSnapshot) {
+            _unsubscribeJournalListener = window.firebaseFirestoreOnSnapshot(
+                docRef,
+                (docSnap) => {
+                    try {
+                        if (docSnap && docSnap.exists && docSnap.exists()) {
+                            const data = docSnap.data() || { tps: [], sls: [] };
+                            // Evitar re-render innecesario si no cambió nada
+                            const serializedNew = JSON.stringify({
+                                tps: data.tps || [],
+                                sls: data.sls || []
+                            });
+                            const serializedCurrent = JSON.stringify({
+                                tps: currentData.tps || [],
+                                sls: currentData.sls || []
+                            });
+                            if (serializedNew !== serializedCurrent) {
+                                currentData = {
+                                    tps: data.tps || [],
+                                    sls: data.sls || []
+                                };
+                                // No tocar localStorage aquí para no pisar datos offline propios
+                                renderUI();
+                                if(!document.getElementById('summaries-section').classList.contains('hidden')){
+                                    generateSummaries();
+                                }
+                            }
+                        }
+                    } catch (err) {
+                        console.warn('Error procesando snapshot en tiempo real', err);
+                    }
+                },
+                (err) => {
+                    console.warn('Listener en tiempo real cancelado / con error:', err);
+                }
+            );
+        }
     } catch (err) {
         console.error('Error cargando desde Firestore', err);
     }
