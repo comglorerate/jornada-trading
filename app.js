@@ -252,14 +252,10 @@ async function saveData() {
 
 // Envoltorio que se asegura que Firestore esté online antes de hacer setDoc
 async function saveDataFirestoreWithNetwork() {
-    // asegurar que la red de Firestore está habilitada (si existe helper)
-    try {
-        if (window.ensureFirestoreOnline) await window.ensureFirestoreOnline();
-    } catch (e) {
-        console.warn('No se pudo forzar enableNetwork antes de guardar:', e);
-    }
+    // Firestore ya gestiona la reconexión; solo guardamos.
     return saveDataFirestore();
 }
+
 
 // Guarda en Firestore (async)
 async function saveDataFirestore() {

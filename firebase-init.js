@@ -26,9 +26,11 @@ const db = getFirestore(app);
 const auth = getAuth(app);
 
 // Intentar persistencia offline (IndexedDB)
-enableIndexedDbPersistence(db).catch((err) => {
-  console.warn('No se pudo habilitar persistence (IndexedDB):', err);
-});
+// Desactivado temporalmente: da problemas con el SDK 12.x en este proyecto
+// enableIndexedDbPersistence(db).catch((err) => {
+//   console.warn('No se pudo habilitar persistence (IndexedDB):', err);
+// });
+
 
 // Iniciar sesión anónima solo si no hay usuario restaurado por Firebase Auth.
 // Evita crear una nueva cuenta anónima que reemplace la sesión persistida.
@@ -81,42 +83,24 @@ window._firebase = { db, auth, uid: null };
 // Wrappers para usar las funciones Firestore desde scripts no modulares
 window.firebaseFirestoreDoc = (...args) => doc(...args);
 window.firebaseFirestoreGetDoc = (ref) => getDoc(ref);
-window.firebaseFirestoreSetDoc = (ref, data) => setDoc(ref, data);
+window.firebaseFirestoreSetDoc = (ref, data, options) => setDoc(ref, data, options);
 window.firebaseFirestoreUpdateDoc = (ref, data) => updateDoc(ref, data);
 window.firebaseFirestoreOnSnapshot = (ref, cb, errCb) => onSnapshot(ref, cb, errCb);
 
 onAuthStateChanged(auth, user => {
   window._firebase.uid = user ? user.uid : null;
-  // Si Auth restauró un usuario, cancelar el intento anónimo programado
+  // cancelar temporizador de sign-in anónimo
   if (_anonSignInTimer) { clearTimeout(_anonSignInTimer); _anonSignInTimer = null; }
   window.dispatchEvent(new Event('firebase-auth-ready'));
-  // Intentar asegurar que Firestore esté en modo online cuando la auth esté lista
-  (async () => {
-    try {
-      if (window._firebase && window._firebase.db) {
-        // enableNetwork es importado dinámicamente para evitar dependencias de carga
-        const mod = await import('https://www.gstatic.com/firebasejs/12.6.0/firebase-firestore.js');
-        await mod.enableNetwork(window._firebase.db);
-        console.log('firebase-init: enableNetwork() ejecutado tras auth ready');
-      }
-    } catch (err) {
-      console.warn('firebase-init: no se pudo enableNetwork tras auth:', err);
-    }
-  })();
 });
 
+
 // Helper para forzar que Firestore esté online desde la consola
+// Por ahora NO forzamos nada de red: Firestore ya gestiona esto solo.
 window.ensureFirestoreOnline = async function() {
-  try {
-    if (!window._firebase || !window._firebase.db) throw new Error('Firestore no inicializado');
-    const mod = await import('https://www.gstatic.com/firebasejs/12.6.0/firebase-firestore.js');
-    await mod.enableNetwork(window._firebase.db);
-    console.log('ensureFirestoreOnline: enableNetwork OK');
-  } catch (err) {
-    console.error('ensureFirestoreOnline error:', err);
-    throw err;
-  }
+  return;
 };
+
 
 // Google Auth helpers (expuestos en window)
 const googleProvider = new GoogleAuthProvider();
