@@ -8,7 +8,7 @@ import {
   setDoc,
   updateDoc
 } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-firestore.js";
-import { getAuth, signInAnonymously, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut, linkWithPopup } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-auth.js";
+import { getAuth, signInAnonymously, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut, linkWithPopup, setPersistence, browserLocalPersistence } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-auth.js";
 
 // CONFIG: reemplaza si necesitas valores distintos (copiado desde Firebase Console)
 const firebaseConfig = {
@@ -29,13 +29,15 @@ enableIndexedDbPersistence(db).catch((err) => {
   console.warn('No se pudo habilitar persistence (IndexedDB):', err);
 });
 
-// Iniciar sesión anónima por defecto. Cambia esto si prefieres email/Google sign-in.
-// Hacemos un intento con logs y reintentos cortos para diagnosticar problemas de auth.
+// Iniciar sesión anónima solo si no hay usuario restaurado por Firebase Auth.
+// Evita crear una nueva cuenta anónima que reemplace la sesión persistida.
+let _anonSignInTimer = null;
 async function tryAnonymousSignIn(retries = 2) {
   try {
-    console.log('Intentando signInAnonymously()...');
+    console.log('Intentando signInAnonymously() con persistence local...');
+    await setPersistence(auth, browserLocalPersistence);
     await signInAnonymously(auth);
-    console.log('Llamado signInAnonymously() correctamente. Esperando onAuthStateChanged...');
+    console.log('SignInAnonymously llamado correctamente.');
   } catch (err) {
     console.error('SignIn error (intentando anon):', err);
     if (retries > 0) {
@@ -44,7 +46,20 @@ async function tryAnonymousSignIn(retries = 2) {
     }
   }
 }
-tryAnonymousSignIn();
+
+// Programar un intento de sign-in anónimo si Auth no restaura usuario en breve.
+function scheduleAnonymousSignIn(delay = 1200) {
+  if (_anonSignInTimer) clearTimeout(_anonSignInTimer);
+  _anonSignInTimer = setTimeout(async () => {
+    if (!auth.currentUser) {
+      await tryAnonymousSignIn();
+    } else {
+      console.log('Usuario ya restaurado; no se inicia sesión anónimo.');
+    }
+  }, delay);
+}
+// lanzar el temporizador; será cancelado por onAuthStateChanged si el usuario existe
+scheduleAnonymousSignIn();
 
 // Exponer helper para forzar sign-in anónimo desde la consola (útil para depuración)
 window.ensureAnonymousSignIn = async function() {
@@ -70,6 +85,8 @@ window.firebaseFirestoreUpdateDoc = (ref, data) => updateDoc(ref, data);
 
 onAuthStateChanged(auth, user => {
   window._firebase.uid = user ? user.uid : null;
+  // Si Auth restauró un usuario, cancelar el intento anónimo programado
+  if (_anonSignInTimer) { clearTimeout(_anonSignInTimer); _anonSignInTimer = null; }
   window.dispatchEvent(new Event('firebase-auth-ready'));
   // Intentar asegurar que Firestore esté en modo online cuando la auth esté lista
   (async () => {
