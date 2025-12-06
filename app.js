@@ -115,19 +115,78 @@ async function loadDataFirestore() {
     }
 }
 
-function saveData() {
+let __pendingSave = null;
+
+async function saveData() {
     const date = datePicker.value;
     const storageKey = `trading_${date}`;
     // Siempre mantén un cache local por velocidad
     localStorage.setItem(storageKey, JSON.stringify(currentData));
     renderUI();
 
-    // Guardar también en Firestore si está disponible
-    saveDataFirestore().catch(err => console.warn('No se pudo guardar en Firestore:', err));
-
+    // Generar resúmenes si están visibles
     if(!document.getElementById('summaries-section').classList.contains('hidden')){
         generateSummaries();
     }
+
+    // Intentar guardar en Firestore de forma fiable: asegurar red y auth
+    try {
+        if (!window._firebase || !window._firebase.db) {
+            // no hay firestore inicializado
+            return;
+        }
+        // Si no hay uid aún, esperar al event firebase-auth-ready (pero no bloquear mucho)
+        if (!window._firebase.uid) {
+            await new Promise(res => {
+                const t = setTimeout(res, 1500); // timeout para no bloquear indefinidamente
+                window.addEventListener('firebase-auth-ready', () => { clearTimeout(t); res(); }, { once: true });
+            });
+        }
+
+        // Si tras espera no hay uid, no intentamos guardar en Firestore
+        if (!window._firebase.uid) return;
+
+        // marcar estado pendiente y actualizar UI
+        __pendingSave = saveDataFirestoreWithNetwork();
+        const statusSync = document.getElementById('auth-sync');
+        if (statusSync) {
+            statusSync.classList.remove('bg-green-400','bg-red-400','bg-gray-400');
+            statusSync.classList.add('animate-pulse','bg-yellow-400');
+            statusSync.title = 'Guardando...';
+        }
+
+        await __pendingSave;
+
+        // éxito
+        if (statusSync) {
+            statusSync.classList.remove('animate-pulse','bg-yellow-400');
+            statusSync.classList.add('bg-green-400');
+            statusSync.title = 'Sincronización OK';
+        }
+        showToast('Guardado en Firestore', 'success', 1800);
+    } catch (err) {
+        console.warn('No se pudo guardar en Firestore:', err);
+        const statusSync = document.getElementById('auth-sync');
+        if (statusSync) {
+            statusSync.classList.remove('animate-pulse','bg-yellow-400','bg-green-400');
+            statusSync.classList.add('bg-red-400');
+            statusSync.title = 'Error sincronizando';
+        }
+        showToast('Error al guardar en la nube', 'error', 4000);
+    } finally {
+        __pendingSave = null;
+    }
+}
+
+// Envoltorio que se asegura que Firestore esté online antes de hacer setDoc
+async function saveDataFirestoreWithNetwork() {
+    // asegurar que la red de Firestore está habilitada (si existe helper)
+    try {
+        if (window.ensureFirestoreOnline) await window.ensureFirestoreOnline();
+    } catch (e) {
+        console.warn('No se pudo forzar enableNetwork antes de guardar:', e);
+    }
+    return saveDataFirestore();
 }
 
 // Guarda en Firestore (async)
