@@ -22,9 +22,61 @@ body { font-family: 'Inter', sans-serif; transition: background-color 0.3s, colo
 .auth-btn-outline { background: transparent; color: #0f172a; border: 1px solid rgba(15,23,42,0.08); }
 .dark .auth-btn-outline { color: #e6eef8; border-color: rgba(255,255,255,0.06); }
 .auth-btn-ghost { background: transparent; color: #0f172a; border: none; }
+/* Ensure ghost buttons are visible in dark mode */
+.dark .auth-btn-ghost { color: #e6eef8; }
 .auth-icon { width: 16px; height: 16px; display: inline-block; }
 
 /* Small responsive tweak */
 @media (max-width: 640px) {
     .auth-btn { padding: 0.35rem 0.6rem; font-size: 0.85rem; }
+}
+
+.auth-cta {
+    border-radius: 999px;
+    padding: 0.55rem 1.4rem;
+    font-weight: 600;
+    font-size: 0.95rem;
+    border: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    transition: transform 0.18s ease, box-shadow 0.2s ease, background-color 0.2s ease, color 0.2s ease;
+}
+.auth-cta-primary {
+    background: linear-gradient(135deg, #2563eb, #1d4ed8);
+    color: #ffffff;
+    box-shadow: 0 12px 20px rgba(37, 99, 235, 0.25);
+}
+.auth-cta-secondary {
+    background-color: rgba(15, 23, 42, 0.03);
+    border: 1px solid rgba(15, 23, 42, 0.15);
+    color: #0f172a;
+}
+.dark .auth-cta-secondary {
+    border-color: rgba(148, 163, 184, 0.4);
+    color: #e2e8f0;
+    background-color: rgba(15, 23, 42, 0.5);
+}
+.auth-cta:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 14px rgba(15, 23, 42, 0.2);
+}
+
+#auth-modal-overlay {
+    backdrop-filter: blur(14px);
+    background-color: rgba(15, 23, 42, 0.55);
+}
+.auth-modal-card {
+    border: 1px solid rgba(15, 23, 42, 0.08);
+    box-shadow: 0 30px 60px rgba(15, 23, 42, 0.25);
+}
+.dark .auth-modal-card {
+    border-color: rgba(148, 163, 184, 0.3);
+}
+
+@media (max-width: 640px) {
+    .auth-cta {
+        width: 100%;
+    }
 }

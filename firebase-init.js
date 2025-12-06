@@ -9,7 +9,7 @@ import {
   updateDoc,
   onSnapshot
 } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-firestore.js";
-import { getAuth, signInAnonymously, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut, linkWithPopup, setPersistence, browserLocalPersistence } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-auth.js";
+import { getAuth, signInAnonymously, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut, linkWithPopup, setPersistence, browserLocalPersistence, createUserWithEmailAndPassword, signInWithEmailAndPassword  } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-auth.js";
 
 // CONFIG: reemplaza si necesitas valores distintos (copiado desde Firebase Console)
 const firebaseConfig = {
@@ -131,6 +131,35 @@ window.signOutUser = async function() {
     console.error('Error signOut:', err);
   }
 };
+
+// Registro con email y contraseña
+window.registerWithEmailPassword = async function(email, password) {
+  try {
+    const a = window._firebase && window._firebase.auth;
+    if (!a) throw new Error('Auth no inicializado');
+    const cred = await createUserWithEmailAndPassword(a, email, password);
+    console.log('Usuario creado con email:', cred.user.uid);
+    return cred.user;
+  } catch (err) {
+    console.error('Error registerWithEmailPassword:', err);
+    throw err;
+  }
+};
+
+// Login con email y contraseña
+window.loginWithEmailPassword = async function(email, password) {
+  try {
+    const a = window._firebase && window._firebase.auth;
+    if (!a) throw new Error('Auth no inicializado');
+    const cred = await signInWithEmailAndPassword(a, email, password);
+    console.log('Login con email OK, uid:', cred.user.uid);
+    return cred.user;
+  } catch (err) {
+    console.error('Error loginWithEmailPassword:', err);
+    throw err;
+  }
+};
+
 
 // --- Helpers de diagnóstico ---
 window.debug_printUid = function() {

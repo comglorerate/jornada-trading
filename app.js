@@ -1,17 +1,15 @@
 // --- MODO OSCURO ---
 function toggleTheme() {
     const html = document.documentElement;
-    const icon = document.getElementById('theme-icon');
-    
+    const icons = Array.from(document.querySelectorAll('.theme-icon'));
+
     if (html.classList.contains('dark')) {
         html.classList.remove('dark');
-        icon.classList.remove('fa-sun');
-        icon.classList.add('fa-moon');
+        icons.forEach(ic => { ic.classList.remove('fa-sun'); ic.classList.add('fa-moon'); });
         localStorage.setItem('theme', 'light');
     } else {
         html.classList.add('dark');
-        icon.classList.remove('fa-moon');
-        icon.classList.add('fa-sun');
+        icons.forEach(ic => { ic.classList.remove('fa-moon'); ic.classList.add('fa-sun'); });
         localStorage.setItem('theme', 'dark');
     }
 }
@@ -19,11 +17,10 @@ function toggleTheme() {
 // Cargar preferencia de tema al iniciar
 (function loadTheme() {
     const savedTheme = localStorage.getItem('theme');
-    const icon = document.getElementById('theme-icon');
+    const icons = Array.from(document.querySelectorAll('.theme-icon'));
     if (savedTheme === 'dark') {
         document.documentElement.classList.add('dark');
-        icon.classList.remove('fa-moon');
-        icon.classList.add('fa-sun');
+        icons.forEach(ic => { ic.classList.remove('fa-moon'); ic.classList.add('fa-sun'); });
     }
 })();
 
@@ -407,8 +404,6 @@ function addEntry(type) {
 
     const input = document.getElementById(inputId);
     const assetInput = document.getElementById(assetId);
-
-        const btnRegister = document.getElementById('btn-register');
     const value = parseFloat(input.value);
     const asset = assetInput.value.trim().toUpperCase(); // Obtener activo
 
@@ -743,10 +738,8 @@ function showConfirmModal(message) {
 
 // Actualiza botones y estado de auth en la UI
 function updateAuthUI() {
-    const btnGoogle = document.getElementById('btn-google');
-    const btnGoogleMobile = document.getElementById('btn-google-mobile');
-    const btnRegister = document.getElementById('btn-register');
-    const btnRegisterMobile = document.getElementById('btn-register-mobile');
+    const authCtaLogin = document.getElementById('auth-cta-login');
+    const authCtaRegister = document.getElementById('auth-cta-register');
     const btnSignout = document.getElementById('btn-signout');
     const btnSignoutMobile = document.getElementById('btn-signout-mobile');
     const btnSync = document.getElementById('btn-sync-now');
@@ -757,38 +750,33 @@ function updateAuthUI() {
     const statusSync = document.getElementById('auth-sync');
     if (!status || !statusText || !statusUid || !statusSync) return;
 
+    const toggleAuthCTAs = (show) => {
+        [authCtaLogin, authCtaRegister].forEach((el) => {
+            if (!el) return;
+            el.classList.toggle('hidden', !show);
+        });
+    };
+
     const a = window._firebase && window._firebase.auth;
     const uid = window._firebase && window._firebase.uid;
 
-    // Mostrar u ocultar botones según estado
     if (a && uid) {
-        // Desktop
-        if (btnGoogle) btnGoogle.classList.add('hidden');
-        if (btnRegister) btnRegister.classList.add('hidden');
+        toggleAuthCTAs(false);
         if (btnSignout) btnSignout.classList.remove('hidden');
         if (btnSync) btnSync.classList.remove('hidden');
-        // Mobile
-        if (btnGoogleMobile) btnGoogleMobile.classList.add('hidden');
-        if (btnRegisterMobile) btnRegisterMobile.classList.add('hidden');
         if (btnSignoutMobile) btnSignoutMobile.classList.remove('hidden');
         if (btnSyncMobile) btnSyncMobile.classList.remove('hidden');
         status.classList.remove('hidden');
 
         const user = a.currentUser;
-        // Si el usuario es anónimo, ofrecer la opción de registrarse (link con Google)
         if (user && user.isAnonymous) {
             statusText.innerText = 'Anon (anónimo)';
-            if (btnRegister) btnRegister.classList.remove('hidden');
-            if (btnRegisterMobile) btnRegisterMobile.classList.remove('hidden');
         } else if (user && !user.isAnonymous && user.email) {
             statusText.innerText = user.email;
-            if (btnRegister) btnRegister.classList.add('hidden');
-            if (btnRegisterMobile) btnRegisterMobile.classList.add('hidden');
         } else {
             statusText.innerText = 'Anon';
         }
 
-        // Mostrar uid abreviado
         try {
             const short = String(uid).length > 12 ? `${uid.slice(0,6)}...${uid.slice(-4)}` : uid;
             statusUid.innerText = short;
@@ -796,37 +784,31 @@ function updateAuthUI() {
             statusUid.innerText = '';
         }
 
-        // Indicador de sincronización (heurística): online + presencia de Firestore = verde
         const online = navigator.onLine;
         const hasDb = !!(window._firebase && window._firebase.db);
         if (online && hasDb) {
-            statusSync.classList.remove('bg-gray-400');
-            statusSync.classList.remove('bg-red-400');
+            statusSync.classList.remove('bg-gray-400', 'bg-red-400');
             statusSync.classList.add('bg-green-400');
             statusSync.title = 'Sincronización OK';
         } else if (!online) {
-            statusSync.classList.remove('bg-gray-400');
-            statusSync.classList.remove('bg-green-400');
+            statusSync.classList.remove('bg-gray-400', 'bg-green-400');
             statusSync.classList.add('bg-red-400');
             statusSync.title = 'Offline (sin conexión de red)';
         } else {
-            statusSync.classList.remove('bg-green-400');
-            statusSync.classList.remove('bg-red-400');
+            statusSync.classList.remove('bg-green-400', 'bg-red-400');
             statusSync.classList.add('bg-gray-400');
             statusSync.title = 'Sincronización desconocida';
         }
     } else {
-        if (btnGoogle) btnGoogle.classList.remove('hidden');
-        if (btnGoogleMobile) btnGoogleMobile.classList.remove('hidden');
+        toggleAuthCTAs(true);
         if (btnSignout) btnSignout.classList.add('hidden');
-        if (btnSignoutMobile) btnSignoutMobile.classList.add('hidden');
         if (btnSync) btnSync.classList.add('hidden');
+        if (btnSignoutMobile) btnSignoutMobile.classList.add('hidden');
         if (btnSyncMobile) btnSyncMobile.classList.add('hidden');
         status.classList.remove('hidden');
         statusText.innerText = 'No conectado';
         statusUid.innerText = '';
-        statusSync.classList.remove('bg-green-400');
-        statusSync.classList.remove('bg-red-400');
+        statusSync.classList.remove('bg-green-400', 'bg-red-400');
         statusSync.classList.add('bg-gray-400');
         statusSync.title = 'Sincronización desconocida';
     }
@@ -861,5 +843,103 @@ function watchAuthChanges() {
         }, { once: true });
     }
 }
+let authModalMode = 'register'; // 'register' o 'login'
+
+function openAuthModal(mode = 'register') {
+    authModalMode = mode;
+    const overlay = document.getElementById('auth-modal-overlay');
+    const title = document.getElementById('auth-modal-title');
+    const submitBtn = document.getElementById('auth-modal-submit');
+    const switchText = document.getElementById('auth-modal-switch-text');
+    const switchBtn = document.getElementById('auth-modal-switch');
+
+    if (!overlay || !title || !submitBtn || !switchText || !switchBtn) return;
+
+    if (mode === 'register') {
+        title.innerText = 'Crear cuenta';
+        submitBtn.innerText = 'Registrarme';
+        switchText.innerText = '¿Ya tienes cuenta?';
+        switchBtn.innerText = 'Inicia sesión aquí';
+    } else {
+        title.innerText = 'Iniciar sesión';
+        submitBtn.innerText = 'Iniciar sesión';
+        switchText.innerText = '¿Aún no tienes cuenta?';
+        switchBtn.innerText = 'Regístrate aquí';
+    }
+
+    overlay.classList.remove('hidden');
+}
+
+function closeAuthModal() {
+    const overlay = document.getElementById('auth-modal-overlay');
+    if (!overlay) return;
+    overlay.classList.add('hidden');
+}
+
+function setupAuthModal() {
+    const overlay = document.getElementById('auth-modal-overlay');
+    if (!overlay) return;
+
+    const closeBtn = document.getElementById('auth-modal-close');
+    const submitBtn = document.getElementById('auth-modal-submit');
+    const switchBtn = document.getElementById('auth-modal-switch');
+    const googleBtn = document.getElementById('auth-google-btn');
+
+    // Cerrar
+    closeBtn.addEventListener('click', closeAuthModal);
+    overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) closeAuthModal();
+    });
+
+    // Cambiar entre modo registro / login
+    switchBtn.addEventListener('click', () => {
+        openAuthModal(authModalMode === 'register' ? 'login' : 'register');
+    });
+
+    // Submit email/password
+    submitBtn.addEventListener('click', async () => {
+        const email = document.getElementById('auth-email').value.trim();
+        const password = document.getElementById('auth-password').value;
+
+        if (!email || !password) {
+            showToast('Completa correo y contraseña', 'error');
+            return;
+        }
+        if (password.length < 6) {
+            showToast('La contraseña debe tener al menos 6 caracteres', 'error');
+            return;
+        }
+
+        try {
+            if (authModalMode === 'register') {
+                await window.registerWithEmailPassword(email, password);
+                showToast('Cuenta creada e iniciada sesión', 'success');
+            } else {
+                await window.loginWithEmailPassword(email, password);
+                showToast('Sesión iniciada', 'success');
+            }
+            closeAuthModal();
+        } catch (err) {
+            console.error(err);
+            const msg = (err && err.message) || 'Error de autenticación';
+            showToast(msg, 'error');
+        }
+    });
+
+    // Google dentro del modal
+    googleBtn.addEventListener('click', async () => {
+        try {
+            await window.signInWithGoogle();
+            showToast('Sesión iniciada con Google', 'success');
+            closeAuthModal();
+        } catch (err) {
+            console.error(err);
+            showToast('Error al iniciar sesión con Google', 'error');
+        }
+    });
+}
+
+// Ejecutar al cargar
+setupAuthModal();
 
 watchAuthChanges();
