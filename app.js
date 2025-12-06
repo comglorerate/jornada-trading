@@ -60,38 +60,30 @@ datePicker.value = today;
 
 // Inicializar: carga rápida local y luego Firestore si está disponible
 loadData();
-// Si hay datos locales pendientes, mostrar el botón de sincronizar (aunque no haya auth aún)
-try {
-    const syncBtnInit = document.getElementById('btn-sync-now');
-    if (syncBtnInit && getLocalTradingKeys && getLocalTradingKeys().length > 0) {
-        syncBtnInit.classList.remove('hidden');
-    }
-} catch(e) { /* ignore if DOM not ready or function missing */ }
-// Intentar cargar desde Firestore cuando esté listo
+
+// Sincronización automática al iniciar sesión / restaurar auth
 window.addEventListener('firebase-auth-ready', async () => {
-    // intenta cargar datos desde Firestore y actualizar UI
+    // 1) Cargar datos remotos de la fecha actual y enganchar listener en tiempo real
     try { await loadDataFirestore(); } catch (e) { /* ignore */ }
-    // actualizar visibilidad de botones auth
+
+    // 2) Actualizar UI de autenticación
     updateAuthUI();
 
-    // Si el usuario está autenticado con cuenta (no anónima) y hay datos locales,
-    // mostrar aviso y habilitar botón de 'Sincronizar ahora' para migrar local->Firestore.
+    // 3) Si el usuario está autenticado con cuenta (no anónima),
+    //    intentar migrar automáticamente datos locales que aún no estén en Firestore.
     try {
         const uid = window._firebase && window._firebase.uid;
         const user = window._firebase && window._firebase.auth && window._firebase.auth.currentUser;
-        const syncBtn = document.getElementById('btn-sync-now');
         const localKeys = getLocalTradingKeys();
-        if (syncBtn) syncBtn.classList.add('hidden');
 
-        if (uid && user && !user.isAnonymous) {
-            // mostrar botón si hay datos locales pendientes
-            if (localKeys.length > 0) {
-                if (syncBtn) syncBtn.classList.remove('hidden');
-                showToast('Se han detectado datos locales. Pulsa "Sincronizar ahora" para subirlos a tu cuenta.', 'info', 5000);
-            }
+        if (uid && user && !user.isAnonymous && localKeys.length > 0) {
+            // Migrar en background sin mostrar botón ni forzar interacción.
+            migrateLocalToFirestore(false).catch(err => {
+                console.warn('Error en migración automática local->Firestore', err);
+            });
         }
     } catch (e) {
-        console.warn('Error comprobando migración local->firestore', e);
+        console.warn('Error comprobando migración automática local->firestore', e);
     }
 });
 
@@ -290,6 +282,7 @@ async function saveDataFirestore() {
 }
 
 // --- MIGRACIÓN localStorage -> Firestore ---
+// Devuelve todas las fechas (YYYY-MM-DD) que tienen datos en localStorage
 function getLocalTradingKeys() {
     const keys = [];
     for (let i = 0; i < localStorage.length; i++) {
@@ -301,17 +294,25 @@ function getLocalTradingKeys() {
     return keys.sort();
 }
 
+// Migra datos locales de múltiples días a Firestore.
+// - Si confirmIfNeeded = true: muestra un modal de confirmación.
+// - Si confirmIfNeeded = false: ejecuta en background sin preguntar (modo automático).
 async function migrateLocalToFirestore(confirmIfNeeded = true) {
     const localDates = getLocalTradingKeys();
     if (localDates.length === 0) {
-        showToast('No hay datos locales para sincronizar', 'info');
-        return;
+        // En modo automático no molestamos al usuario.
+        if (confirmIfNeeded) {
+            showToast('No hay datos locales para sincronizar', 'info');
+        }
+        return { migrated: 0, skippedExisting: 0 };
     }
 
     const uid = window._firebase && window._firebase.uid;
     if (!uid) {
-        showToast('Necesitas iniciar sesión para sincronizar', 'error');
-        return;
+        if (confirmIfNeeded) {
+            showToast('Necesitas iniciar sesión para sincronizar', 'error');
+        }
+        return { migrated: 0, skippedExisting: 0 };
     }
 
     if (confirmIfNeeded) {
@@ -327,6 +328,7 @@ async function migrateLocalToFirestore(confirmIfNeeded = true) {
 
     const db = window._firebase.db;
     let migrated = 0;
+    let skippedExisting = 0;
     for (const dateKey of localDates) {
         try {
             const raw = localStorage.getItem(`trading_${dateKey}`);
@@ -336,15 +338,20 @@ async function migrateLocalToFirestore(confirmIfNeeded = true) {
             const docRef = window.firebaseFirestoreDoc(db, 'users', uid, 'journals', dateKey);
             const snap = await window.firebaseFirestoreGetDoc(docRef);
             if (snap && snap.exists && snap.exists()) {
-                // Si ya existe en Firestore y no está vacío, saltar
+                // Documento ya existe en Firestore
                 const existing = snap.data();
                 const emptyExisting = (!existing || ((!existing.tps || existing.tps.length===0) && (!existing.sls || existing.sls.length===0)));
                 const emptyLocal = ((!data.tps || data.tps.length===0) && (!data.sls || data.sls.length===0));
+
                 if (!emptyExisting) {
+                    // Ya hay datos remotos: no migramos pero lo contamos como "saltado".
+                    skippedExisting++;
                     console.log('Saltando', dateKey, 'ya existe en Firestore');
                     continue;
                 }
-                if (emptyLocal) continue;
+                if (emptyLocal) {
+                    continue;
+                }
             }
 
             await window.firebaseFirestoreSetDoc(docRef, data);
@@ -354,11 +361,22 @@ async function migrateLocalToFirestore(confirmIfNeeded = true) {
         }
     }
 
-    if (migrated > 0) showToast(`Sincronizados ${migrated} día(s) a Firestore`, 'success');
-    else showToast('No se migraron datos (ya existían o estaban vacíos)', 'info');
+    // Mostrar mensajes sólo cuando tiene sentido
+    if (confirmIfNeeded) {
+        if (migrated > 0) {
+            const extra = skippedExisting > 0 ? ` (${skippedExisting} día(s) ya estaban en la nube)` : '';
+            showToast(`Sincronizados ${migrated} día(s) a Firestore${extra}`, 'success');
+        } else if (skippedExisting > 0) {
+            showToast('Todos los días locales ya existían en la nube. No se migraron cambios.', 'info');
+        } else {
+            showToast('No se migraron datos (vacíos o sin cambios)', 'info');
+        }
+    }
 
     // refrescar UI con datos desde Firestore si el datePicker cae en un día migrado
     await loadDataFirestore();
+
+    return { migrated, skippedExisting };
 }
 
 // Handler público llamado desde el botón 'Sincronizar ahora'
