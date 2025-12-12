@@ -10,7 +10,7 @@ import {
   updateDoc,
   onSnapshot
 } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-firestore.js";
-import { getAuth, signInAnonymously, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut, linkWithPopup, setPersistence, browserLocalPersistence, createUserWithEmailAndPassword, signInWithEmailAndPassword  } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-auth.js";
+import { getAuth, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut, createUserWithEmailAndPassword, signInWithEmailAndPassword  } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-auth.js";
 
 // CONFIG: reemplaza si necesitas valores distintos (copiado desde Firebase Console)
 const firebaseConfig = {
@@ -33,50 +33,8 @@ const auth = getAuth(app);
 // });
 
 
-// Iniciar sesión anónima solo si no hay usuario restaurado por Firebase Auth.
-// Evita crear una nueva cuenta anónima que reemplace la sesión persistida.
-let _anonSignInTimer = null;
-async function tryAnonymousSignIn(retries = 2) {
-  try {
-    console.log('Intentando signInAnonymously() con persistence local...');
-    await setPersistence(auth, browserLocalPersistence);
-    await signInAnonymously(auth);
-    console.log('SignInAnonymously llamado correctamente.');
-  } catch (err) {
-    console.error('SignIn error (intentando anon):', err);
-    if (retries > 0) {
-      console.log('Reintentando signInAnonymously en 1s, intentos restantes=', retries - 1);
-      setTimeout(() => tryAnonymousSignIn(retries - 1), 1000);
-    }
-  }
-}
-
-// Programar un intento de sign-in anónimo si Auth no restaura usuario en breve.
-function scheduleAnonymousSignIn(delay = 1200) {
-  if (_anonSignInTimer) clearTimeout(_anonSignInTimer);
-  _anonSignInTimer = setTimeout(async () => {
-    if (!auth.currentUser) {
-      await tryAnonymousSignIn();
-    } else {
-      console.log('Usuario ya restaurado; no se inicia sesión anónimo.');
-    }
-  }, delay);
-}
-// lanzar el temporizador; será cancelado por onAuthStateChanged si el usuario existe
-scheduleAnonymousSignIn();
-
-// Exponer helper para forzar sign-in anónimo desde la consola (útil para depuración)
-window.ensureAnonymousSignIn = async function() {
-  try {
-    console.log('ensureAnonymousSignIn: iniciando...');
-    const res = await signInAnonymously(auth);
-    console.log('ensureAnonymousSignIn: éxito', res);
-    return res;
-  } catch (err) {
-    console.error('ensureAnonymousSignIn: error', err);
-    throw err;
-  }
-};
+// Nota: se ha eliminado la lógica de usuarios anónimos. No se crearán ni manejarán
+// cuentas anónimas en este proyecto.
 
 // Exponer `db`, `auth` y `uid` en `window` para usar desde `app.js` sin convertirlo a módulo
 window._firebase = { db, auth, uid: null };
@@ -91,8 +49,6 @@ window.firebaseFirestoreOnSnapshot = (ref, cb, errCb) => onSnapshot(ref, cb, err
 
 onAuthStateChanged(auth, user => {
   window._firebase.uid = user ? user.uid : null;
-  // cancelar temporizador de sign-in anónimo
-  if (_anonSignInTimer) { clearTimeout(_anonSignInTimer); _anonSignInTimer = null; }
   window.dispatchEvent(new Event('firebase-auth-ready'));
 });
 
@@ -111,14 +67,10 @@ window.signInWithGoogle = async function() {
   try {
     const a = window._firebase.auth;
     if (!a) throw new Error('Auth no inicializado');
-    // Si el usuario actual es anónimo, linkear para conservar UID y datos
-    if (a.currentUser && a.currentUser.isAnonymous) {
-      await linkWithPopup(a.currentUser, googleProvider);
-      console.log('Cuenta anónima enlazada con Google. uid:', a.currentUser.uid);
-    } else {
-      await signInWithPopup(a, googleProvider);
-      console.log('Inicio de sesión con Google completado. uid:', a.currentUser.uid);
-    }
+    // Abrir popup para iniciar sesión con Google. No linkeamos cuentas anónimas
+    // porque la lógica de usuarios anónimos fue eliminada.
+    await signInWithPopup(a, googleProvider);
+    console.log('Inicio de sesión con Google completado.');
   } catch (err) {
     console.error('Error signInWithGoogle:', err);
     throw err;

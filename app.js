@@ -77,7 +77,8 @@ window.addEventListener('firebase-auth-ready', async () => {
         const user = window._firebase && window._firebase.auth && window._firebase.auth.currentUser;
         const localKeys = getLocalTradingKeys();
 
-        if (uid && user && !user.isAnonymous && localKeys.length > 0) {
+        // Solo migrar automáticamente si el usuario tiene una cuenta (email)
+        if (uid && user && user.email && localKeys.length > 0) {
             // Migrar en background sin mostrar botón ni forzar interacción.
             migrateLocalToFirestore(false).catch(err => {
                 console.warn('Error en migración automática local->Firestore', err);
@@ -462,7 +463,13 @@ function promptMigrateLocalToFirestore() {
     });
 }
 
-function addEntry(type) {
+async function addEntry(type) {
+    // Si el usuario no está autenticado, mostrar advertencia (y respetar preferencia)
+    const uid = window._firebase && window._firebase.uid;
+    if (!uid) {
+        const ok = await showAddWarningIfNeeded();
+        if (!ok) return;
+    }
     const inputId = type === 'tp' ? 'tp-input' : 'sl-input';
     const assetId = type === 'tp' ? 'tp-asset' : 'sl-asset'; // ID del Activo
 
@@ -882,6 +889,44 @@ function showConfirmModal(message) {
     });
 }
 
+// Mostrar advertencia al añadir entrada si el usuario no está autenticado.
+// Devuelve true si el usuario decide continuar (o si la advertencia está suprimida).
+function showAddWarningIfNeeded() {
+    const key = 'suppress_add_warning';
+    if (localStorage.getItem(key) === 'true') return Promise.resolve(true);
+
+    return new Promise(resolve => {
+        const overlay = document.getElementById('modal-overlay');
+        const msg = document.getElementById('modal-message');
+        const btnOk = document.getElementById('modal-confirm');
+        const btnCancel = document.getElementById('modal-cancel');
+        if (!overlay || !msg || !btnOk || !btnCancel) return resolve(true);
+
+        msg.innerHTML = `
+            <div class="mb-3">Debes iniciar sesion para sincronizar estos cambios.</div>
+            <label class="inline-flex items-center text-sm"><input type="checkbox" id="modal-suppress-checkbox" class="mr-2">No mostrar de nuevo este mensaje</label>
+        `;
+        overlay.classList.remove('hidden');
+
+        const cleanup = () => {
+            overlay.classList.add('hidden');
+            btnOk.removeEventListener('click', onOk);
+            btnCancel.removeEventListener('click', onCancel);
+        };
+
+        const onOk = () => {
+            const cb = document.getElementById('modal-suppress-checkbox');
+            if (cb && cb.checked) localStorage.setItem(key, 'true');
+            cleanup();
+            resolve(true);
+        };
+        const onCancel = () => { cleanup(); resolve(false); };
+
+        btnOk.addEventListener('click', onOk);
+        btnCancel.addEventListener('click', onCancel);
+    });
+}
+
 // Actualiza botones y estado de auth en la UI
 function updateAuthUI() {
     const authCtaLogin = document.getElementById('auth-cta-login');
@@ -921,12 +966,16 @@ function updateAuthUI() {
         status.classList.remove('hidden');
 
         const user = a.currentUser;
-        if (user && user.isAnonymous) {
-            statusText.innerText = 'Anon (anónimo)';
-        } else if (user && !user.isAnonymous && user.email) {
+        // Mostrar email si existe, si no mostrar uid abreviado
+        if (user && user.email) {
             statusText.innerText = user.email;
         } else {
-            statusText.innerText = 'Anon';
+            try {
+                const short = String(uid).length > 12 ? `${uid.slice(0,6)}...${uid.slice(-4)}` : uid;
+                statusText.innerText = short;
+            } catch (e) {
+                statusText.innerText = 'Conectado';
+            }
         }
 
         try {
@@ -969,13 +1018,13 @@ function updateAuthUI() {
         statusSync.title = 'Sincronización desconocida';
     }
 
-    // Mostrar el bloque "Resumen de Operación" únicamente para usuarios autenticados (no anónimos)
+    // Mostrar el bloque "Resumen de Operación" únicamente para usuarios autenticados
     try {
         const summaryCard = document.getElementById('summary-card');
         const summariesSection = document.getElementById('summaries-section');
         const toggleBtn = document.getElementById('btn-toggle-summary');
         const user = a && a.currentUser;
-        const isLoggedIn = !!(user && !user.isAnonymous);
+        const isLoggedIn = !!(a && uid);
 
         if (summaryCard) summaryCard.classList.toggle('hidden', !isLoggedIn);
         if (toggleBtn) toggleBtn.classList.toggle('hidden', !isLoggedIn);
