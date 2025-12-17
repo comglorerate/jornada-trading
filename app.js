@@ -711,83 +711,239 @@ function toggleSummaries() {
     }
 }
 async function generateSummaries() {
-    // Evitar ejecuciones concurrentes que pueden producir duplicados en la lista
     if (window._isGeneratingSummaries) {
         console.log('generateSummaries: ya en ejecución, omitiendo llamada duplicada');
         return;
     }
     window._isGeneratingSummaries = true;
     try {
-    const selectedDate = new Date(datePicker.value + "T00:00:00");
-    const dayOfWeek = selectedDate.getDay() || 7; 
-    
-    const monday = new Date(selectedDate);
-    monday.setDate(selectedDate.getDate() - dayOfWeek + 1);
-    
-    const sunday = new Date(monday);
-    sunday.setDate(monday.getDate() + 6);
+        const selectedDate = new Date(datePicker.value + "T00:00:00");
+        const dayOfWeek = selectedDate.getDay() || 7;
+        const baseMonday = new Date(selectedDate);
+        baseMonday.setDate(selectedDate.getDate() - dayOfWeek + 1);
 
-    const options = { day: '2-digit', month: '2-digit' };
-    const rangeText = `Semana ${monday.toLocaleDateString('es-ES', options)} - ${sunday.toLocaleDateString('es-ES', options)}/${monday.getFullYear()}`;
-    document.getElementById('week-range-text').innerText = rangeText;
+        const weeklyContainer = document.getElementById('weekly-summaries');
+        const monthlyContainer = document.getElementById('monthly-summaries');
+        if (!weeklyContainer) return;
+        weeklyContainer.innerHTML = '';
+        if (monthlyContainer) monthlyContainer.innerHTML = '';
 
-    let weeklyNet = 0;
-    let totalDays = 0;
-    let winDays = 0;
-    let lossDays = 0;
-    const dailyListContainer = document.getElementById('daily-summary-list');
-    dailyListContainer.innerHTML = '';
-
-    for (let i = 0; i < 7; i++) {
-        const tempDate = new Date(monday);
-        tempDate.setDate(monday.getDate() + i);
-        const dateKey = tempDate.toISOString().split('T')[0];
-
-        // Intentar leer desde Firestore si está disponible
-        let data = null;
-        if (window._firebase && window._firebase.db && window._firebase.uid) {
-            try {
-                const db = window._firebase.db;
-                const uid = window._firebase.uid;
-                const docRef = window.firebaseFirestoreDoc(db, 'users', uid, 'journals', dateKey);
-                const snap = await window.firebaseFirestoreGetDoc(docRef);
-                if (snap && snap.exists && snap.exists()) {
-                    data = snap.data();
+        // Helper: leer datos desde Firestore o localStorage
+        async function readJournalForDate(dateKey) {
+            let data = null;
+            if (window._firebase && window._firebase.db && window._firebase.uid) {
+                try {
+                    const db = window._firebase.db;
+                    const uid = window._firebase.uid;
+                    const docRef = window.firebaseFirestoreDoc(db, 'users', uid, 'journals', dateKey);
+                    const snap = await window.firebaseFirestoreGetDoc(docRef);
+                    if (snap && snap.exists && snap.exists()) data = snap.data();
+                } catch (err) {
+                    // ignore remote errors and fallback to local
                 }
-            } catch (err) {
-                console.warn('No se pudo leer desde Firestore para', dateKey, err);
             }
-        }
-
-        // Si no hay datos en Firestore, fallback a localStorage
-        if (!data) {
-            const rawData = localStorage.getItem(`trading_${dateKey}`);
-            if (rawData) data = JSON.parse(rawData);
-        }
-
-        if (data) {
-            const dailyTp = (data.tps || []).reduce((sum, item) => sum + item.value, 0);
-            const dailySl = (data.sls || []).reduce((sum, item) => sum + item.value, 0);
-            if ((data.tps && data.tps.length > 0) || (data.sls && data.sls.length > 0)) {
-                const dailyNet = dailyTp - dailySl;
-                weeklyNet += dailyNet;
-                totalDays++;
-                if (dailyNet > 0) winDays++;
-                else if (dailyNet < 0) lossDays++;
-                addDailyRow(tempDate, dailyTp, dailySl, dailyNet);
+            if (!data) {
+                const raw = localStorage.getItem(`trading_${dateKey}`);
+                if (raw) data = JSON.parse(raw);
             }
+            return data;
         }
-    }
 
-    const weekNetEl = document.getElementById('week-net-total');
-    weekNetEl.innerText = (weeklyNet > 0 ? '+' : '') + weeklyNet.toFixed(2) + '%';
-    weekNetEl.className = "font-bold text-lg " + (weeklyNet > 0 ? 'text-green-500 dark:text-green-400' : (weeklyNet < 0 ? 'text-red-500 dark:text-red-400' : 'text-slate-800 dark:text-slate-200'));
+        // Generar 4 semanas: semana actual (w=0) y las 3 anteriores (w=1..3)
+        for (let w = 0; w < 4; w++) {
+            const monday = new Date(baseMonday);
+            monday.setDate(baseMonday.getDate() - (w * 7));
+            const sunday = new Date(monday);
+            sunday.setDate(monday.getDate() + 6);
 
-    document.getElementById('week-total-days').innerText = totalDays;
-    document.getElementById('week-win-days').innerText = winDays;
-    document.getElementById('week-loss-days').innerText = lossDays;
-    const winRate = totalDays > 0 ? (winDays / totalDays) * 100 : 0;
-    document.getElementById('week-win-rate').innerText = winRate.toFixed(1) + '%';
+            const options = { day: '2-digit', month: '2-digit' };
+            const rangeText = `${monday.toLocaleDateString('es-ES', options)} - ${sunday.toLocaleDateString('es-ES', options)}/${monday.getFullYear()}`;
+
+            let weeklyNet = 0;
+            let totalDays = 0;
+            let winDays = 0;
+            let lossDays = 0;
+            const dailyRows = [];
+
+            for (let i = 0; i < 7; i++) {
+                const tempDate = new Date(monday);
+                tempDate.setDate(monday.getDate() + i);
+                const dateKey = tempDate.toISOString().split('T')[0];
+                const data = await readJournalForDate(dateKey);
+                if (data && ((data.tps && data.tps.length > 0) || (data.sls && data.sls.length > 0))) {
+                    const dailyTp = (data.tps || []).reduce((s, it) => s + it.value, 0);
+                    const dailySl = (data.sls || []).reduce((s, it) => s + it.value, 0);
+                    const dailyNet = dailyTp - dailySl;
+                    weeklyNet += dailyNet;
+                    totalDays++;
+                    if (dailyNet > 0) winDays++;
+                    else if (dailyNet < 0) lossDays++;
+                    dailyRows.push({ date: new Date(tempDate), tp: dailyTp, sl: dailySl, net: dailyNet });
+                }
+            }
+
+            // Ocultar semanas sin trades
+            if (totalDays === 0) {
+                continue; // no renderizar esta semana
+            }
+
+            // Crear tarjeta de semana con botón toggle
+            const card = document.createElement('div');
+            card.className = 'sub-surface p-4';
+            const weekNetSign = weeklyNet > 0 ? '+' : '';
+            const weekNetClass = weeklyNet > 0 ? 'text-green-500 dark:text-green-400' : (weeklyNet < 0 ? 'text-red-500 dark:text-red-400' : 'text-slate-800 dark:text-slate-200');
+            const weekId = `week-${monday.toISOString().split('T')[0]}`;
+            const isCurrentWeek = (w === 0);
+            card.innerHTML = `
+                <div class="flex justify-between items-start mb-3">
+                    <div class="flex items-center gap-3">
+                        <div class="font-medium text-slate-600 dark:text-slate-300 text-sm">Semana ${rangeText}</div>
+                        <button type="button" class="toggle-week-btn text-xs px-2 py-1 border rounded text-slate-600 dark:text-slate-200 bg-white dark:bg-slate-700" data-week-id="${weekId}" aria-expanded="${isCurrentWeek ? 'true' : 'false'}">${isCurrentWeek ? 'Ocultar días' : 'Ver días'}</button>
+                    </div>
+                    <div class="font-bold text-lg ${weekNetClass}">${weekNetSign}${weeklyNet.toFixed(2)}%</div>
+                </div>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
+                    <div>
+                        <div class="text-xs text-slate-500 dark:text-slate-400 mb-1">Total Días</div>
+                        <div class="font-bold text-slate-800 dark:text-slate-200">${totalDays}</div>
+                    </div>
+                    <div>
+                        <div class="text-xs text-green-600 dark:text-green-400 mb-1">Días Ganadores</div>
+                        <div class="font-bold text-green-600 dark:text-green-400">${winDays}</div>
+                    </div>
+                    <div>
+                        <div class="text-xs text-red-500 dark:text-red-400 mb-1">Días Perdedores</div>
+                        <div class="font-bold text-red-500 dark:text-red-400">${lossDays}</div>
+                    </div>
+                    <div>
+                        <div class="text-xs text-blue-500 dark:text-blue-400 mb-1">Tasa de Éxito</div>
+                        <div class="font-bold text-blue-600 dark:text-blue-400">${(totalDays>0?((winDays/totalDays)*100).toFixed(1):'0.0')}%</div>
+                    </div>
+                </div>
+            `;
+
+            // Lista de días dentro de la tarjeta
+            if (dailyRows.length > 0) {
+                const daysWrapper = document.createElement('div');
+                // Por defecto ocultar los días salvo la semana actual (w=0)
+                daysWrapper.className = 'mt-3 space-y-2 ' + (isCurrentWeek ? '' : 'hidden');
+                daysWrapper.id = weekId;
+                dailyRows.forEach(row => {
+                    const dateStr = row.date.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
+                    const dateCap = dateStr.charAt(0).toUpperCase() + dateStr.slice(1);
+                    const netColor = row.net > 0 ? 'text-green-600 dark:text-green-400' : (row.net < 0 ? 'text-red-600 dark:text-red-400' : 'text-slate-600 dark:text-slate-300');
+                    const dotColor = row.net > 0 ? 'text-green-500' : (row.net < 0 ? 'text-red-500' : 'text-gray-300');
+                    const sign = row.net > 0 ? '+' : '';
+
+                    const div = document.createElement('div');
+                    div.className = "bg-slate-50 dark:bg-slate-700/50 rounded p-3 flex justify-between items-center border border-slate-100 dark:border-slate-600 cursor-pointer hover:shadow-md";
+                    div.innerHTML = `
+                        <div class="flex items-center gap-3">
+                            <i class="fa-solid fa-circle text-[10px] ${dotColor}"></i>
+                            <div>
+                                <div class="text-sm font-bold text-slate-700 dark:text-slate-200">${dateCap}</div>
+                                <div class="text-xs text-slate-400">TP: +${row.tp.toFixed(2)}% | SL: -${row.sl.toFixed(2)}%</div>
+                            </div>
+                        </div>
+                        <div class="font-bold ${netColor}">${sign}${row.net.toFixed(2)}%</div>
+                    `;
+
+                    const dateKey = row.date.toISOString().split('T')[0];
+                    div.addEventListener('click', (e) => {
+                        if (e.target && (e.target.tagName === 'BUTTON' || e.target.closest && e.target.closest('button'))) return;
+                        const picker = document.getElementById('datePicker');
+                        if (picker) {
+                            picker.value = dateKey;
+                            try { localStorage.setItem(DATE_STORAGE_KEY, dateKey); } catch (err) {}
+                        }
+                        try { loadData(); } catch (err) { console.warn('Error cargando datos tras click resumen', err); }
+                        const summaries = document.getElementById('summaries-section');
+                        if (summaries) summaries.classList.add('hidden');
+                        const toggleBtn = document.getElementById('btn-toggle-summary');
+                        if (toggleBtn) toggleBtn.innerHTML = '<i class="fa-solid fa-chart-column"></i> Ver Resúmenes';
+                        try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch (e) {}
+                    });
+
+                    daysWrapper.appendChild(div);
+                    });
+                    card.appendChild(daysWrapper);
+                    // Asociar comportamiento al botón toggle de esta tarjeta
+                    const toggleBtn = card.querySelector(`button.toggle-week-btn[data-week-id="${weekId}"]`);
+                    if (toggleBtn) {
+                        toggleBtn.addEventListener('click', (ev) => {
+                            ev.stopPropagation();
+                            const target = document.getElementById(weekId);
+                            if (!target) return;
+                            const wasHidden = target.classList.toggle('hidden');
+                            // Actualizar texto y atributo aria-expanded
+                            toggleBtn.innerText = wasHidden ? 'Ver días' : 'Ocultar días';
+                            toggleBtn.setAttribute('aria-expanded', String(!wasHidden));
+                        });
+                    }
+            } else {
+                const empty = document.createElement('div');
+                empty.className = 'text-center text-slate-400 dark:text-slate-500 text-sm py-3';
+                empty.innerText = 'No hay registros esta semana';
+                card.appendChild(empty);
+            }
+
+            weeklyContainer.appendChild(card);
+        }
+
+        // Si la fecha seleccionada es el último día del mes, generar resumen mensual
+        function isLastDayOfMonth(d) {
+            const check = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+            return d.getDate() === check;
+        }
+
+        if (monthlyContainer && isLastDayOfMonth(selectedDate)) {
+            const year = selectedDate.getFullYear();
+            const month = selectedDate.getMonth();
+            const first = new Date(year, month, 1);
+            const last = new Date(year, month + 1, 0);
+
+            let monthNet = 0, monthTotalDays = 0, monthWinDays = 0, monthLossDays = 0;
+            for (let d = new Date(first); d <= last; d.setDate(d.getDate() + 1)) {
+                const key = d.toISOString().split('T')[0];
+                const data = await readJournalForDate(key);
+                if (data && ((data.tps && data.tps.length > 0) || (data.sls && data.sls.length > 0))) {
+                    const tp = (data.tps || []).reduce((s, it) => s + it.value, 0);
+                    const sl = (data.sls || []).reduce((s, it) => s + it.value, 0);
+                    const net = tp - sl;
+                    monthNet += net;
+                    monthTotalDays++;
+                    if (net > 0) monthWinDays++; else if (net < 0) monthLossDays++;
+                }
+            }
+
+            const monthCard = document.createElement('div');
+            monthCard.className = 'muted-card p-4';
+            const monthName = first.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
+            const signM = monthNet > 0 ? '+' : '';
+            const monthNetClass = monthNet > 0 ? 'text-green-500 dark:text-green-400' : (monthNet < 0 ? 'text-red-500 dark:text-red-400' : 'text-slate-800 dark:text-slate-200');
+            monthCard.innerHTML = `
+                <div class="flex justify-between items-center mb-3">
+                    <div class="font-bold text-slate-700 dark:text-slate-200">Resumen mensual — ${monthName}</div>
+                    <div class="font-bold ${monthNetClass}">${signM}${monthNet.toFixed(2)}%</div>
+                </div>
+                <div class="grid grid-cols-3 gap-4 text-center">
+                    <div>
+                        <div class="text-xs text-slate-500 dark:text-slate-400 mb-1">Días registrados</div>
+                        <div class="font-bold">${monthTotalDays}</div>
+                    </div>
+                    <div>
+                        <div class="text-xs text-green-600 dark:text-green-400 mb-1">Días Ganadores</div>
+                        <div class="font-bold text-green-600 dark:text-green-400">${monthWinDays}</div>
+                    </div>
+                    <div>
+                        <div class="text-xs text-red-500 dark:text-red-400 mb-1">Días Perdedores</div>
+                        <div class="font-bold text-red-500 dark:text-red-400">${monthLossDays}</div>
+                    </div>
+                </div>
+            `;
+
+            monthlyContainer.appendChild(monthCard);
+        }
     } finally {
         window._isGeneratingSummaries = false;
     }

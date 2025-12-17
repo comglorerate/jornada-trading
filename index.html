@@ -264,31 +264,15 @@
             <h3 class="font-bold text-slate-800 dark:text-slate-100 mb-4 flex items-center gap-2">
                 <i class="fa-regular fa-calendar-days"></i> Resumen Semanal
             </h3>
-            
-            <div class="sub-surface p-5">
-                <div class="flex justify-between items-start mb-4">
-                    <span class="font-medium text-slate-600 dark:text-slate-300 text-sm" id="week-range-text">Semana --/-- - --/--</span>
-                    <span class="font-bold text-lg" id="week-net-total">0.00%</span>
-                </div>
-                
-                <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
-                    <div>
-                        <div class="text-xs text-slate-500 dark:text-slate-400 mb-1">Total Días</div>
-                        <div class="font-bold text-slate-800 dark:text-slate-200" id="week-total-days">0</div>
-                    </div>
-                    <div>
-                        <div class="text-xs text-green-600 dark:text-green-400 mb-1">Días Ganadores</div>
-                        <div class="font-bold text-green-600 dark:text-green-400" id="week-win-days">0</div>
-                    </div>
-                    <div>
-                        <div class="text-xs text-red-500 dark:text-red-400 mb-1">Días Perdedores</div>
-                        <div class="font-bold text-red-500 dark:text-red-400" id="week-loss-days">0</div>
-                    </div>
-                    <div>
-                        <div class="text-xs text-blue-500 dark:text-blue-400 mb-1">Tasa de Éxito</div>
-                        <div class="font-bold text-blue-600 dark:text-blue-400" id="week-win-rate">0.0%</div>
-                    </div>
-                </div>
+
+            <!-- Contenedor para las 4 semanas apiladas -->
+            <div id="weekly-summaries" class="space-y-4">
+                <!-- JS insertará hasta 4 tarjetas de semana aquí -->
+            </div>
+
+            <!-- Contenedor para resúmenes mensuales (aparece mucho más abajo cuando corresponda) -->
+            <div id="monthly-summaries" class="mt-8 space-y-4">
+                <!-- JS insertará tarjetas mensuales cuando se cumpla un mes -->
             </div>
         </div>
 
