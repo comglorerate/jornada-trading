@@ -248,9 +248,23 @@
 
     <!-- SECCIÓN DESPLEGABLE: RESÚMENES -->
     <div id="summaries-section" class="hidden max-w-6xl mx-auto px-4 mt-8 space-y-6">
-        
+
+        <!-- Selector Día / Semana / Mes -->
+        <div class="flex justify-center">
+            <div id="summary-view-toggle" class="inline-flex items-center bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-full p-1 shadow-sm">
+                <button id="summary-view-day" data-view="day" class="px-4 py-1 rounded-full text-sm font-medium bg-blue-600 text-white">Día</button>
+                <button id="summary-view-week" data-view="week" class="px-4 py-1 rounded-full text-sm font-medium text-slate-600 dark:text-slate-200">Semana</button>
+                <button id="summary-view-month" data-view="month" class="px-4 py-1 rounded-full text-sm font-medium text-slate-600 dark:text-slate-200">Mes</button>
+            </div>
+        </div>
+
+        <!-- Loading indicator for summaries -->
+        <div id="summaries-loading" class="hidden flex justify-center mt-4">
+            <div class="spinner" aria-hidden="true"></div>
+        </div>
+
         <!-- 1. Resumen Diario (Lista) -->
-        <div class="panel theme-transition p-6">
+        <div id="daily-panel" class="panel theme-transition p-6">
             <h3 class="font-bold text-slate-800 dark:text-slate-100 mb-4 flex items-center gap-2">
                 <i class="fa-solid fa-chart-simple"></i> Resumen Diario
             </h3>
@@ -260,7 +274,7 @@
         </div>
 
         <!-- 2. Resumen Semanal -->
-        <div class="panel theme-transition p-6">
+        <div id="weekly-panel" class="panel theme-transition p-6">
             <h3 class="font-bold text-slate-800 dark:text-slate-100 mb-4 flex items-center gap-2">
                 <i class="fa-regular fa-calendar-days"></i> Resumen Semanal
             </h3>
@@ -270,10 +284,17 @@
                 <!-- JS insertará hasta 4 tarjetas de semana aquí -->
             </div>
 
-            <!-- Contenedor para resúmenes mensuales (aparece mucho más abajo cuando corresponda) -->
-            <div id="monthly-summaries" class="mt-8 space-y-4">
+        </div>
+
+        <!-- Panel separado para resúmenes mensuales (se muestra solo en vista "Mes") -->
+        <div id="monthly-panel" class="panel theme-transition p-6 hidden">
+            <h3 class="font-bold text-slate-800 dark:text-slate-100 mb-4 flex items-center gap-2">
+                <i class="fa-solid fa-calendar"></i> Resumen Mensual
+            </h3>
+            <div id="monthly-summaries" class="mt-2 space-y-4">
                 <!-- JS insertará tarjetas mensuales cuando se cumpla un mes -->
             </div>
+        </div>
         </div>
 
     </div>

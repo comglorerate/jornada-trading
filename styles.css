@@ -267,3 +267,24 @@ button[onclick^="addEntry"]:hover { background: var(--primary-strong); transform
 .entry-delete:hover { background: rgba(220,38,38,0.08); color: #991b1b; }
 .entry-edit { color: rgba(15,23,42,0.6); }
 .entry-edit:hover { color: var(--text); }
+
+/* Spinner para carga de resúmenes */
+.spinner {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    border: 4px solid rgba(15,23,42,0.08);
+    border-top-color: var(--primary);
+    animation: spin 1s linear infinite;
+    box-shadow: 0 6px 18px rgba(37,99,235,0.08);
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+.loading-text {
+    margin-left: 10px;
+    color: var(--muted-2);
+    font-weight: 600;
+}

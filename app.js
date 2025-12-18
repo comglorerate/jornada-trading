@@ -98,9 +98,7 @@ if (window._firebase && window._firebase.uid !== undefined) {
 datePicker.addEventListener('change', () => {
     localStorage.setItem(DATE_STORAGE_KEY, datePicker.value);
     loadData();
-    if(!document.getElementById('summaries-section').classList.contains('hidden')){
-        generateSummaries();
-    }
+    scheduleGenerateSummaries();
 });
 
 let _unsubscribeJournalCollectionListener = null;
@@ -125,9 +123,7 @@ function ensureJournalCollectionListener() {
                     if (dateKey === datePicker.value) {
                         currentData = { tps: [], sls: [] };
                         renderUI();
-                        if(!document.getElementById('summaries-section').classList.contains('hidden')){
-                            generateSummaries();
-                        }
+                        scheduleGenerateSummaries();
                     }
                     return;
                 }
@@ -141,9 +137,7 @@ function ensureJournalCollectionListener() {
                 if (dateKey === datePicker.value) {
                     currentData = normalized;
                     renderUI();
-                    if(!document.getElementById('summaries-section').classList.contains('hidden')){
-                        generateSummaries();
-                    }
+                    scheduleGenerateSummaries();
                 }
             });
         },
@@ -158,6 +152,109 @@ function cleanupJournalCollectionListener() {
         _unsubscribeJournalCollectionListener();
         _unsubscribeJournalCollectionListener = null;
     }
+}
+
+// --- Helpers reutilizables para lectura de diarios (cache y lecturas batch) ---
+const __journalCache = new Map();
+let __firestoreModule = null; // cache del import dinámico
+
+function hasFirestore() {
+    return !!(window._firebase && window._firebase.db && window._firebase.uid);
+}
+
+async function ensureFirestoreModule() {
+    if (__firestoreModule) return __firestoreModule;
+    try {
+        __firestoreModule = await import('https://www.gstatic.com/firebasejs/12.6.0/firebase-firestore.js');
+    } catch (err) {
+        __firestoreModule = null;
+    }
+    return __firestoreModule;
+}
+
+// Obtener un diario (primero cache/localStorage, si no existe intentar Firestore)
+async function readJournalForDate(dateKey) {
+    if (__journalCache.has(dateKey)) return __journalCache.get(dateKey);
+    let data = null;
+    try {
+        const raw = localStorage.getItem(`trading_${dateKey}`);
+        if (raw) data = JSON.parse(raw);
+    } catch (e) {
+        // ignore parse errors
+    }
+    if (!data && hasFirestore()) {
+        try {
+            const db = window._firebase.db;
+            const uid = window._firebase.uid;
+            const docRef = window.firebaseFirestoreDoc(db, 'users', uid, 'journals', dateKey);
+            const snap = await window.firebaseFirestoreGetDoc(docRef);
+            if (snap && snap.exists && snap.exists()) data = snap.data();
+        } catch (err) {
+            // ignore remote errors
+        }
+    }
+    __journalCache.set(dateKey, data);
+    return data;
+}
+
+// Leer muchos diarios en batch: intenta localStorage/cache y, si es necesario, usa consultas 'in' en chunks
+async function readManyJournalForDates(keys) {
+    const out = {};
+    const toFetch = [];
+    for (const k of keys) {
+        if (__journalCache.has(k)) { out[k] = __journalCache.get(k); continue; }
+        try {
+            const raw = localStorage.getItem(`trading_${k}`);
+            if (raw) { const parsed = JSON.parse(raw); __journalCache.set(k, parsed); out[k] = parsed; continue; }
+        } catch (e) { /* ignore */ }
+        toFetch.push(k);
+    }
+
+    if (toFetch.length === 0) return out;
+    if (!hasFirestore()) {
+        toFetch.forEach(k => { __journalCache.set(k, null); out[k] = null; });
+        return out;
+    }
+
+    const db = window._firebase.db;
+    const uid = window._firebase.uid;
+    const chunkSize = 10;
+    for (let i = 0; i < toFetch.length; i += chunkSize) {
+        const chunk = toFetch.slice(i, i + chunkSize);
+        try {
+            const mod = await ensureFirestoreModule();
+            if (!mod) throw new Error('firestore module not available');
+            const { collection, query, where, getDocs, documentId } = mod;
+            const collRef = collection(db, 'users', uid, 'journals');
+            const q = query(collRef, where(documentId(), 'in', chunk));
+            const snap = await getDocs(q);
+            const found = new Set();
+            snap.forEach(d => { const id = d.id; const data = d.data(); __journalCache.set(id, data); out[id] = data; found.add(id); });
+            chunk.forEach(k => { if (!found.has(k)) { __journalCache.set(k, null); out[k] = null; } });
+        } catch (err) {
+            console.warn('readManyJournalForDates batch error', err);
+            chunk.forEach(k => { __journalCache.set(k, null); out[k] = null; });
+        }
+    }
+
+    return out;
+}
+
+// Debounce para generación de resúmenes: evita llamadas redundantes y chequea visibilidad
+let __generateSummariesTimer = null;
+function scheduleGenerateSummaries(delay = 250) {
+    // Si la sección de resúmenes está oculta, no hacemos nada
+    try {
+        const section = document.getElementById('summaries-section');
+        if (!section || section.classList.contains('hidden')) return;
+    } catch (e) { return; }
+
+    if (window._isGeneratingSummaries) return;
+    if (__generateSummariesTimer) clearTimeout(__generateSummariesTimer);
+    __generateSummariesTimer = setTimeout(() => {
+        __generateSummariesTimer = null;
+        try { generateSummaries(); } catch (e) { console.warn('generateSummaries error (scheduled):', e); }
+    }, delay);
 }
 
 function loadData() {
@@ -230,9 +327,7 @@ async function loadDataFirestore() {
                                 };
                                 // No tocar localStorage aquí para no pisar datos offline propios
                                 renderUI();
-                                if(!document.getElementById('summaries-section').classList.contains('hidden')){
-                                    generateSummaries();
-                                }
+                                scheduleGenerateSummaries();
                             }
                         }
                     } catch (err) {
@@ -259,9 +354,7 @@ async function saveData() {
     renderUI();
 
     // Generar resúmenes si están visibles
-    if(!document.getElementById('summaries-section').classList.contains('hidden')){
-        generateSummaries();
-    }
+    scheduleGenerateSummaries();
 
     // Intentar guardar en Firestore de forma fiable: asegurar red y auth
     try {
@@ -716,6 +809,7 @@ async function generateSummaries() {
         return;
     }
     window._isGeneratingSummaries = true;
+    try { showSummariesLoading(); } catch(e) {}
     try {
         const selectedDate = new Date(datePicker.value + "T00:00:00");
         const dayOfWeek = selectedDate.getDay() || 7;
@@ -724,30 +818,13 @@ async function generateSummaries() {
 
         const weeklyContainer = document.getElementById('weekly-summaries');
         const monthlyContainer = document.getElementById('monthly-summaries');
-        if (!weeklyContainer) return;
-        weeklyContainer.innerHTML = '';
+        const dailyContainer = document.getElementById('daily-summary-list');
+        if (!weeklyContainer && !dailyContainer && !monthlyContainer) return;
+        if (weeklyContainer) weeklyContainer.innerHTML = '';
         if (monthlyContainer) monthlyContainer.innerHTML = '';
+        if (dailyContainer) dailyContainer.innerHTML = '';
 
-        // Helper: leer datos desde Firestore o localStorage
-        async function readJournalForDate(dateKey) {
-            let data = null;
-            if (window._firebase && window._firebase.db && window._firebase.uid) {
-                try {
-                    const db = window._firebase.db;
-                    const uid = window._firebase.uid;
-                    const docRef = window.firebaseFirestoreDoc(db, 'users', uid, 'journals', dateKey);
-                    const snap = await window.firebaseFirestoreGetDoc(docRef);
-                    if (snap && snap.exists && snap.exists()) data = snap.data();
-                } catch (err) {
-                    // ignore remote errors and fallback to local
-                }
-            }
-            if (!data) {
-                const raw = localStorage.getItem(`trading_${dateKey}`);
-                if (raw) data = JSON.parse(raw);
-            }
-            return data;
-        }
+        // Usar helpers superiores: readJournalForDate / readManyJournalForDates
 
         // Generar 4 semanas: semana actual (w=0) y las 3 anteriores (w=1..3)
         for (let w = 0; w < 4; w++) {
@@ -765,12 +842,23 @@ async function generateSummaries() {
             let lossDays = 0;
             const dailyRows = [];
 
+            // Preparar lectura paralela de los 7 días de la semana
+            const weekDates = [];
             for (let i = 0; i < 7; i++) {
                 const tempDate = new Date(monday);
                 tempDate.setDate(monday.getDate() + i);
-                const dateKey = tempDate.toISOString().split('T')[0];
-                const data = await readJournalForDate(dateKey);
+                weekDates.push(new Date(tempDate));
+            }
+
+            const weekKeys = weekDates.map(d => d.toISOString().split('T')[0]);
+            // Intentar leer en batch (localStorage/cache + Firestore 'in' en chunks)
+            const weekMap = await readManyJournalForDates(weekKeys);
+
+            // Procesar resultados en memoria
+            for (let i = 0; i < weekKeys.length; i++) {
+                const data = weekMap[weekKeys[i]];
                 if (data && ((data.tps && data.tps.length > 0) || (data.sls && data.sls.length > 0))) {
+                    const tempDate = weekDates[i];
                     const dailyTp = (data.tps || []).reduce((s, it) => s + it.value, 0);
                     const dailySl = (data.sls || []).reduce((s, it) => s + it.value, 0);
                     const dailyNet = dailyTp - dailySl;
@@ -798,7 +886,7 @@ async function generateSummaries() {
                 <div class="flex justify-between items-start mb-3">
                     <div class="flex items-center gap-3">
                         <div class="font-medium text-slate-600 dark:text-slate-300 text-sm">Semana ${rangeText}</div>
-                        <button type="button" class="toggle-week-btn text-xs px-2 py-1 border rounded text-slate-600 dark:text-slate-200 bg-white dark:bg-slate-700" data-week-id="${weekId}" aria-expanded="${isCurrentWeek ? 'true' : 'false'}">${isCurrentWeek ? 'Ocultar días' : 'Ver días'}</button>
+                        <button type="button" class="toggle-week-btn text-xs px-2 py-1 border rounded text-slate-600 dark:text-slate-200 bg-white dark:bg-slate-700" data-week-id="${weekId}" aria-expanded="false">Ver días</button>
                     </div>
                     <div class="font-bold text-lg ${weekNetClass}">${weekNetSign}${weeklyNet.toFixed(2)}%</div>
                 </div>
@@ -825,8 +913,8 @@ async function generateSummaries() {
             // Lista de días dentro de la tarjeta
             if (dailyRows.length > 0) {
                 const daysWrapper = document.createElement('div');
-                // Por defecto ocultar los días salvo la semana actual (w=0)
-                daysWrapper.className = 'mt-3 space-y-2 ' + (isCurrentWeek ? '' : 'hidden');
+                // Por defecto ocultar los días en todas las semanas
+                daysWrapper.className = 'mt-3 space-y-2 hidden';
                 daysWrapper.id = weekId;
                 dailyRows.forEach(row => {
                     const dateStr = row.date.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
@@ -890,22 +978,56 @@ async function generateSummaries() {
             weeklyContainer.appendChild(card);
         }
 
-        // Si la fecha seleccionada es el último día del mes, generar resumen mensual
-        function isLastDayOfMonth(d) {
-            const check = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
-            return d.getDate() === check;
+        // Rellenar la vista 'Día' solo con los días de la semana actual (baseMonday..baseMonday+6)
+        try {
+            if (dailyContainer) {
+                // Ya limpiado arriba; ahora iterar la semana actual (leer en batch)
+                const weekStart = new Date(baseMonday);
+                const wkKeys = [];
+                const wkDates = [];
+                for (let i = 0; i < 7; i++) {
+                    const d = new Date(weekStart);
+                    d.setDate(weekStart.getDate() + i);
+                    wkDates.push(d);
+                    wkKeys.push(d.toISOString().split('T')[0]);
+                }
+                try {
+                    const weekMap = await readManyJournalForDates(wkKeys);
+                    for (let i = 0; i < wkKeys.length; i++) {
+                        const key = wkKeys[i];
+                        const data = weekMap[key];
+                        if (data && ((data.tps && data.tps.length > 0) || (data.sls && data.sls.length > 0))) {
+                            const tp = (data.tps || []).reduce((s, it) => s + it.value, 0);
+                            const sl = (data.sls || []).reduce((s, it) => s + it.value, 0);
+                            const net = tp - sl;
+                            addDailyRow(wkDates[i], tp, sl, net);
+                        }
+                    }
+                } catch (e) {
+                    console.warn('Error leyendo semana en batch', e);
+                }
+            }
+        } catch (e) {
+            console.warn('Error rellenando vista Día', e);
         }
 
-        if (monthlyContainer && isLastDayOfMonth(selectedDate)) {
+        // Generar resumen mensual para el mes seleccionado (mostrar siempre en la vista "Mes")
+
+        if (monthlyContainer) {
             const year = selectedDate.getFullYear();
             const month = selectedDate.getMonth();
             const first = new Date(year, month, 1);
             const last = new Date(year, month + 1, 0);
 
             let monthNet = 0, monthTotalDays = 0, monthWinDays = 0, monthLossDays = 0;
+            // Construir lista de keys para el mes y leer en paralelo
+            const monthKeys = [];
             for (let d = new Date(first); d <= last; d.setDate(d.getDate() + 1)) {
-                const key = d.toISOString().split('T')[0];
-                const data = await readJournalForDate(key);
+                monthKeys.push(new Date(d).toISOString().split('T')[0]);
+            }
+            const monthMap = await readManyJournalForDates(monthKeys);
+            for (let i = 0; i < monthKeys.length; i++) {
+                const data = monthMap[monthKeys[i]];
                 if (data && ((data.tps && data.tps.length > 0) || (data.sls && data.sls.length > 0))) {
                     const tp = (data.tps || []).reduce((s, it) => s + it.value, 0);
                     const sl = (data.sls || []).reduce((s, it) => s + it.value, 0);
@@ -945,9 +1067,64 @@ async function generateSummaries() {
             monthlyContainer.appendChild(monthCard);
         }
     } finally {
+        try { hideSummariesLoading(); } catch (e) {}
         window._isGeneratingSummaries = false;
     }
 }
+
+// --- VISTAS DE RESUMEN (Día / Semana / Mes) ---
+function setSummaryView(view) {
+    try {
+        const dailyPanel = document.getElementById('daily-panel');
+        const weeklyPanel = document.getElementById('weekly-panel');
+        const monthlyPanel = document.getElementById('monthly-panel');
+
+        if (dailyPanel) dailyPanel.classList.toggle('hidden', view !== 'day');
+        if (weeklyPanel) weeklyPanel.classList.toggle('hidden', view !== 'week');
+        if (monthlyPanel) monthlyPanel.classList.toggle('hidden', view !== 'month');
+
+        // Actualizar estados de botones
+        const dayBtn = document.getElementById('summary-view-day');
+        const weekBtn = document.getElementById('summary-view-week');
+        const monthBtn = document.getElementById('summary-view-month');
+        const allBtns = [dayBtn, weekBtn, monthBtn];
+        allBtns.forEach(b => {
+            if (!b) return;
+            b.classList.remove('bg-blue-600','text-white');
+            b.classList.add('text-slate-600','dark:text-slate-200');
+        });
+        const active = document.querySelector(`#summary-view-toggle button[data-view="${view}"]`);
+        if (active) {
+            active.classList.add('bg-blue-600','text-white');
+            active.classList.remove('text-slate-600','dark:text-slate-200');
+        }
+
+        localStorage.setItem('summary_view', view);
+    } catch (e) {
+        console.warn('setSummaryView error', e);
+    }
+}
+
+function initSummaryView() {
+    const toggle = document.getElementById('summary-view-toggle');
+    if (!toggle) return;
+    const dayBtn = document.getElementById('summary-view-day');
+    const weekBtn = document.getElementById('summary-view-week');
+    const monthBtn = document.getElementById('summary-view-month');
+    [dayBtn, weekBtn, monthBtn].forEach(b => {
+        if (!b) return;
+        b.addEventListener('click', () => {
+            const v = b.dataset && b.dataset.view ? b.dataset.view : (b.id || '').replace('summary-view-','');
+            setSummaryView(v);
+        });
+    });
+
+    const saved = localStorage.getItem('summary_view') || 'day';
+    setSummaryView(saved);
+}
+
+// Asegurar inicialización tras carga del DOM (scripts están al final, pero por si acaso)
+window.addEventListener('DOMContentLoaded', initSummaryView);
 
 function addDailyRow(dateObj, tp, sl, net) {
     const container = document.getElementById('daily-summary-list');
@@ -996,6 +1173,19 @@ function addDailyRow(dateObj, tp, sl, net) {
     }
 
     container.appendChild(div);
+}
+
+// Mostrar/ocultar indicador de carga para la sección de resúmenes
+function showSummariesLoading() {
+    const el = document.getElementById('summaries-loading');
+    if (!el) return;
+    el.classList.remove('hidden');
+}
+
+function hideSummariesLoading() {
+    const el = document.getElementById('summaries-loading');
+    if (!el) return;
+    el.classList.add('hidden');
 }
 
 /* --- MODALES Y TOASTS PERSONALIZADOS --- */
@@ -1091,8 +1281,6 @@ function updateAuthUI() {
     const authCtaRegisterMobile = document.getElementById('auth-cta-register-mobile');
     const btnSignout = document.getElementById('btn-signout');
     const btnSignoutMobile = document.getElementById('btn-signout-mobile');
-    const btnSync = document.getElementById('btn-sync-now');
-    const btnSyncMobile = document.getElementById('btn-sync-now-mobile');
     const status = document.getElementById('auth-status');
     const statusText = document.getElementById('auth-text');
     const statusUid = document.getElementById('auth-uid');
@@ -1116,9 +1304,7 @@ function updateAuthUI() {
     if (a && uid) {
         toggleAuthCTAs(false);
         if (btnSignout) btnSignout.classList.remove('hidden');
-        if (btnSync) btnSync.classList.remove('hidden');
         if (btnSignoutMobile) btnSignoutMobile.classList.remove('hidden');
-        if (btnSyncMobile) btnSyncMobile.classList.remove('hidden');
         status.classList.remove('hidden');
 
         const user = a.currentUser;
@@ -1159,9 +1345,7 @@ function updateAuthUI() {
     } else {
         toggleAuthCTAs(true);
         if (btnSignout) btnSignout.classList.add('hidden');
-        if (btnSync) btnSync.classList.add('hidden');
         if (btnSignoutMobile) btnSignoutMobile.classList.add('hidden');
-        if (btnSyncMobile) btnSyncMobile.classList.add('hidden');
         // ensure mobile signout is hidden and mobile auth CTAs are visible
         if (btnSignoutMobile) btnSignoutMobile.classList.add('hidden');
         if (authCtaLoginMobile) authCtaLoginMobile.classList.remove('hidden');
@@ -1336,3 +1520,5 @@ function setupAuthModal() {
 setupAuthModal();
 
 watchAuthChanges();
+// Inicializar selector de vista de resúmenes inmediatamente
+try { initSummaryView(); } catch (e) { /* ignore */ }
