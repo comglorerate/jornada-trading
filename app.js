@@ -1543,11 +1543,13 @@ function updateAuthUI() {
         const summaryCard = document.getElementById('summary-card');
         const summariesSection = document.getElementById('summaries-section');
         const toggleBtn = document.getElementById('btn-toggle-summary');
+            const capitalContainer = document.getElementById('capital-container');
         const user = a && a.currentUser;
         const isLoggedIn = !!(a && uid);
 
         if (summaryCard) summaryCard.classList.toggle('hidden', !isLoggedIn);
         if (toggleBtn) toggleBtn.classList.toggle('hidden', !isLoggedIn);
+            if (capitalContainer) capitalContainer.classList.toggle('hidden', !isLoggedIn);
         // Asegurar que la sección desplegable de resúmenes esté oculta si el usuario no está logueado
         if (summariesSection && !isLoggedIn) summariesSection.classList.add('hidden');
     } catch (e) {
