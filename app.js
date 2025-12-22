@@ -27,6 +27,116 @@ function toggleTheme() {
 
 // --- LÓGICA DE TRADING ---
 let currentData = { tps: [], sls: [] };
+const DEFAULT_START_CAPITAL = 100.00;
+function normalizeCurrentData() {
+    if (!currentData || typeof currentData !== 'object') currentData = { tps: [], sls: [] };
+    if (!Array.isArray(currentData.tps)) currentData.tps = [];
+    if (!Array.isArray(currentData.sls)) currentData.sls = [];
+    if (typeof currentData.startCapital !== 'number') currentData.startCapital = DEFAULT_START_CAPITAL;
+    if (typeof currentData.finalCapital !== 'number') currentData.finalCapital = computeFinalCapitalFromData(currentData);
+}
+
+function computeFinalCapitalFromData(data) {
+    try {
+        const start = (data && typeof data.startCapital === 'number') ? data.startCapital : DEFAULT_START_CAPITAL;
+        const tp = Array.isArray(data.tps) ? data.tps.reduce((s, it) => s + (it && Number(it.value) ? Number(it.value) : 0), 0) : 0;
+        const sl = Array.isArray(data.sls) ? data.sls.reduce((s, it) => s + (it && Number(it.value) ? Number(it.value) : 0), 0) : 0;
+        const net = tp - sl;
+        return Number((start + net).toFixed(2));
+    } catch (e) {
+        return DEFAULT_START_CAPITAL;
+    }
+}
+
+// --- Gestión de capital por fecha ---
+const CAPITAL_MAP_KEY = 'capital_by_date';
+function loadCapitalMap() {
+    try {
+        const raw = localStorage.getItem(CAPITAL_MAP_KEY);
+        if (!raw) return {};
+        return JSON.parse(raw) || {};
+    } catch (e) { return {}; }
+}
+
+function saveCapitalMap(map) {
+    try { localStorage.setItem(CAPITAL_MAP_KEY, JSON.stringify(map)); } catch (e) { /* ignore */ }
+}
+
+function getAllKnownDates() {
+    // union of trading keys and capital map keys
+    const keys = new Set();
+    try {
+        const localDates = getLocalTradingKeys();
+        localDates.forEach(d => keys.add(d));
+    } catch (e) {}
+    try {
+        const map = loadCapitalMap();
+        Object.keys(map || {}).forEach(k => keys.add(k));
+    } catch (e) {}
+    return Array.from(keys).sort();
+}
+
+function propagateCapitalFrom(startDateKey) {
+    const map = loadCapitalMap();
+    const allDates = getAllKnownDates();
+    if (allDates.length === 0) return;
+
+    // find starting index: first date >= startDateKey
+    let startIdx = allDates.findIndex(d => d >= startDateKey);
+    if (startIdx === -1) startIdx = 0;
+
+    // determine previous final (start point)
+    let prevFinal = null;
+    // if there's a date before startIdx with final in map, use it
+    for (let i = startIdx - 1; i >= 0; i--) {
+        const d = allDates[i];
+        if (map[d] && typeof map[d].final === 'number') { prevFinal = map[d].final; break; }
+    }
+    if (prevFinal === null) prevFinal = DEFAULT_START_CAPITAL;
+
+    // propagate through allDates starting at startIdx
+    for (let i = startIdx; i < allDates.length; i++) {
+        const d = allDates[i];
+        // read journal data for date (localStorage preferred)
+        let journal = null;
+        try {
+            const raw = localStorage.getItem(`trading_${d}`);
+            if (raw) journal = JSON.parse(raw);
+        } catch (e) { journal = null; }
+
+        const tp = (journal && Array.isArray(journal.tps)) ? journal.tps.reduce((s,it)=>s+ (Number(it.value)||0),0) : 0;
+        const sl = (journal && Array.isArray(journal.sls)) ? journal.sls.reduce((s,it)=>s+ (Number(it.value)||0),0) : 0;
+        const net = tp - sl;
+
+        const start = prevFinal;
+        const final = Number((start + net).toFixed(2));
+        map[d] = { start, final };
+        // persist start/final into the journal localStorage so each date keeps its capital history
+        try {
+            const key = `trading_${d}`;
+            const existingRaw = localStorage.getItem(key);
+            let existing = null;
+            if (existingRaw) {
+                try { existing = JSON.parse(existingRaw); } catch (e) { existing = null; }
+            }
+            if (!existing || typeof existing !== 'object') existing = { tps: [], sls: [] };
+            existing.startCapital = start;
+            existing.finalCapital = final;
+            localStorage.setItem(key, JSON.stringify(existing));
+            __journalCache.set(d, existing);
+        } catch (e) { /* ignore storage errors */ }
+        prevFinal = final;
+    }
+
+    saveCapitalMap(map);
+}
+
+function getLatestProcessedDate() {
+    const map = loadCapitalMap();
+    const keys = Object.keys(map || {});
+    if (keys.length === 0) return null;
+    return keys.sort().slice(-1)[0];
+}
 const DATE_STORAGE_KEY = 'trading_selected_date';
 
 const datePicker = document.getElementById('datePicker');
@@ -101,6 +211,20 @@ datePicker.addEventListener('change', () => {
     scheduleGenerateSummaries();
 });
 
+// Capital input: permitir editar el capital base (porcentaje)
+try {
+    const capitalInput = document.getElementById('capital-input');
+    if (capitalInput) {
+        capitalInput.addEventListener('change', () => {
+            const v = parseFloat(capitalInput.value);
+            if (!isNaN(v)) {
+                currentData.startCapital = v;
+                saveData();
+            }
+        });
+    }
+} catch (e) { /* ignore if DOM not ready */ }
+
 let _unsubscribeJournalCollectionListener = null;
 
 function ensureJournalCollectionListener() {
@@ -122,6 +246,7 @@ function ensureJournalCollectionListener() {
                     localStorage.removeItem(storageKey);
                     if (dateKey === datePicker.value) {
                         currentData = { tps: [], sls: [] };
+                        normalizeCurrentData();
                         renderUI();
                         scheduleGenerateSummaries();
                     }
@@ -131,11 +256,14 @@ function ensureJournalCollectionListener() {
                 const docData = change.doc.data() || {};
                 const normalized = {
                     tps: Array.isArray(docData.tps) ? docData.tps : [],
-                    sls: Array.isArray(docData.sls) ? docData.sls : []
+                    sls: Array.isArray(docData.sls) ? docData.sls : [],
+                    startCapital: typeof docData.startCapital === 'number' ? docData.startCapital : DEFAULT_START_CAPITAL,
+                    finalCapital: typeof docData.finalCapital === 'number' ? docData.finalCapital : null
                 };
                 localStorage.setItem(storageKey, JSON.stringify(normalized));
                 if (dateKey === datePicker.value) {
                     currentData = normalized;
+                    normalizeCurrentData();
                     renderUI();
                     scheduleGenerateSummaries();
                 }
@@ -261,7 +389,35 @@ function loadData() {
     const date = datePicker.value;
     const storageKey = `trading_${date}`;
     const stored = localStorage.getItem(storageKey);
-    currentData = stored ? JSON.parse(stored) : { tps: [], sls: [] };
+    const parsed = stored ? JSON.parse(stored) : null;
+    currentData = parsed ? parsed : { tps: [], sls: [], startCapital: DEFAULT_START_CAPITAL };
+    // Determinar startCapital usando el mapa persistente de capitals
+    try {
+        const map = loadCapitalMap();
+        const selected = date;
+        // If exact date has stored start, use it
+        if (map[selected] && typeof map[selected].start === 'number') {
+            currentData.startCapital = map[selected].start;
+        } else {
+            // Find the most recent previous date in map
+            const keys = Object.keys(map || {}).sort();
+            let prev = null;
+            for (let i = keys.length - 1; i >= 0; i--) {
+                if (keys[i] < selected) { prev = keys[i]; break; }
+            }
+            if (prev && typeof map[prev].final === 'number') {
+                currentData.startCapital = map[prev].final;
+            } else {
+                currentData.startCapital = DEFAULT_START_CAPITAL;
+            }
+        }
+
+        // Nota: No forzamos el startCapital al último final procesado aquí.
+        // La propagación y actualización de capital hacia fechas posteriores
+        // se realiza en `propagateCapitalFrom()` cuando se guardan cambios.
+    } catch (e) { /* fallback ya establecido */ }
+
+    normalizeCurrentData();
     renderUI();
 }
 
@@ -291,10 +447,11 @@ async function loadDataFirestore() {
         // 1) Leer una vez para inicializar la UI
         const snap = await window.firebaseFirestoreGetDoc(docRef);
         if (snap && snap.exists && snap.exists()) {
-            currentData = snap.data() || { tps: [], sls: [] };
+            currentData = snap.data() || { tps: [], sls: [], startCapital: DEFAULT_START_CAPITAL };
         } else {
-            currentData = { tps: [], sls: [] };
+            currentData = { tps: [], sls: [], startCapital: DEFAULT_START_CAPITAL };
         }
+        normalizeCurrentData();
         renderUI();
 
         // 2) Limpiar cualquier listener anterior
@@ -349,8 +506,19 @@ let __pendingSave = null;
 async function saveData() {
     const date = datePicker.value;
     const storageKey = `trading_${date}`;
+    // Calcular y guardar finalCapital antes de persistir
+    try {
+        currentData.finalCapital = computeFinalCapitalFromData(currentData);
+    } catch (e) { /* ignore */ }
     // Siempre mantén un cache local por velocidad
     localStorage.setItem(storageKey, JSON.stringify(currentData));
+    // Actualizar mapa de capital para esta fecha y propagar a fechas posteriores
+    try {
+        const map = loadCapitalMap();
+        map[date] = { start: currentData.startCapital, final: currentData.finalCapital };
+        saveCapitalMap(map);
+        propagateCapitalFrom(date);
+    } catch (e) { console.warn('Error actualizando capital map', e); }
     renderUI();
 
     // Generar resúmenes si están visibles
@@ -689,7 +857,8 @@ async function clearAll() {
     }
 
     // Reset UI state y datos en memoria
-    currentData = { tps: [], sls: [] };
+    currentData = { tps: [], sls: [], startCapital: DEFAULT_START_CAPITAL };
+    normalizeCurrentData();
     renderUI();
     saveData(); // también intentará sincronizar/actualizar estado
 
@@ -770,6 +939,17 @@ function updateTotals() {
     const tpTotal = currentData.tps.reduce((acc, curr) => acc + curr.value, 0);
     const slTotal = currentData.sls.reduce((acc, curr) => acc + curr.value, 0);
     const net = tpTotal - slTotal;
+
+    // Calcular capital dinámico: startCapital + net (ambos en %)
+    const startCapital = (typeof currentData.startCapital === 'number') ? currentData.startCapital : DEFAULT_START_CAPITAL;
+    const capital = startCapital + net;
+    const capitalEl = document.getElementById('capital-input');
+    if (capitalEl) {
+        // actualizar visualmente (sin el símbolo % dentro del input)
+        capitalEl.value = capital.toFixed(2);
+    }
+    // Mantener finalCapital en memoria para uso inmediato
+    try { currentData.finalCapital = Number(capital.toFixed(2)); } catch (e) { /* ignore */ }
 
     document.getElementById('tp-total-display').innerText = tpTotal.toFixed(2) + '%';
     document.getElementById('sl-total-display').innerText = slTotal.toFixed(2) + '%';
