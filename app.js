@@ -840,6 +840,10 @@ async function clearAll() {
     const ok = await showConfirmModal('¿Eliminar todos los datos locales y en la nube? Esta acción es irreversible. ¿Deseas continuar?');
     if (!ok) return;
 
+    // Desactivar listeners para evitar que snapshots repueblen localStorage mientras borramos
+    try { cleanupJournalCollectionListener(); } catch (e) { /* ignore */ }
+    try { if (typeof _unsubscribeJournalListener === 'function') { _unsubscribeJournalListener(); _unsubscribeJournalListener = null; } } catch (e) { /* ignore */ }
+
     // 1) Borrar todas las claves locales tipo trading_YYYY-MM-DD
     let removedLocal = 0;
     // iterar en reversa para evitar problemas al eliminar mientras se recorre
@@ -857,10 +861,23 @@ async function clearAll() {
     }
 
     // Reset UI state y datos en memoria
+    // También eliminar el mapa de capital persistente para evitar que se muestren históricos
+    try { localStorage.removeItem(CAPITAL_MAP_KEY); } catch (e) { /* ignore */ }
+
+    // Limpiar caché en memoria y estado actual sin volver a persistir nada
+    try { __journalCache.clear(); } catch (e) { /* ignore */ }
     currentData = { tps: [], sls: [], startCapital: DEFAULT_START_CAPITAL };
     normalizeCurrentData();
     renderUI();
-    saveData(); // también intentará sincronizar/actualizar estado
+    // Limpiar los contenedores de resúmenes para que no se muestren datos antiguos
+    try {
+        const weeklyContainer = document.getElementById('weekly-summaries'); if (weeklyContainer) weeklyContainer.innerHTML = '';
+        const monthlyContainer = document.getElementById('monthly-summaries'); if (monthlyContainer) monthlyContainer.innerHTML = '';
+        const dailyContainer = document.getElementById('daily-summary-list'); if (dailyContainer) dailyContainer.innerHTML = '';
+        const summariesSection = document.getElementById('summaries-section'); if (summariesSection) summariesSection.classList.add('hidden');
+    } catch (e) { /* ignore */ }
+
+    // No volver a guardar datos vacíos localmente; en su lugar, forzar recarga desde Firestore tras eliminar en la nube
 
     showToast(removedLocal > 0 ? `Eliminados ${removedLocal} día(s) en este navegador` : 'No se encontraron datos locales', 'success', 2200);
 
@@ -884,13 +901,17 @@ async function clearAll() {
                 }
             }
             showToast(`Eliminados ${deleted} documento(s) en la nube`, 'success', 2400);
-            // actualizar listeners/UI
-            loadDataFirestore().catch(()=>{});
+            // actualizar listeners/UI: recargar desde Firestore (vacío)
+            // Nota: tras la eliminación no recreamos entradas locales automáticamente.
+            try { await loadDataFirestore(); } catch (e) { /* ignore */ }
         }
     } catch (err) {
         console.error('Error eliminando datos en la nube', err);
         showToast('Ocurrió un error al eliminar datos en la nube', 'error', 4000);
     }
+
+    // Recargar la página para que la UI se actualice inmediatamente
+    try { setTimeout(() => { location.reload(); }, 150); } catch (e) { /* ignore */ }
 }
 
 // --- RENDERIZADO UI ---
