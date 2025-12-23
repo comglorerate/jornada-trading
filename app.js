@@ -1413,8 +1413,25 @@ function updateAuthUI() {
 
         if (summaryCard) summaryCard.classList.toggle('hidden', !isLoggedIn);
         if (toggleBtn) toggleBtn.classList.toggle('hidden', !isLoggedIn);
-        // Asegurar que la sección desplegable de resúmenes esté oculta si el usuario no está logueado
-        if (summariesSection && !isLoggedIn) summariesSection.classList.add('hidden');
+        // Si el usuario está logueado, forzar que la sección de resúmenes esté abierta
+        if (isLoggedIn) {
+            try {
+                if (summariesSection) {
+                    summariesSection.classList.remove('hidden');
+                }
+                if (toggleBtn) {
+                    toggleBtn.innerHTML = '<i class="fa-solid fa-eye-slash"></i> Ocultar Resúmenes';
+                }
+                // Generar resúmenes inmediatamente (silenciar errores)
+                try { generateSummaries(); } catch (e) { /* ignore */ }
+            } catch (e) {
+                console.warn('Error forzando sección de resúmenes visible:', e);
+            }
+        } else {
+            // Si no está autenticado, ocultar la sección y actualizar texto del botón
+            if (summariesSection) summariesSection.classList.add('hidden');
+            if (toggleBtn) toggleBtn.innerHTML = '<i class="fa-solid fa-chart-column"></i> Ver Resúmenes';
+        }
     } catch (e) {
         // Silenciar errores no críticos
         console.warn('Error actualizando visibilidad del resumen según auth:', e);
