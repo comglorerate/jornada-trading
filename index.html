@@ -1,6 +1,22 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
+    <script>
+        // Pre-render theme initializer: evita el parpadeo inicial (flash)
+        (function(){
+            try {
+                var saved = null;
+                try { saved = localStorage.getItem('theme'); } catch(e) { saved = null; }
+                var html = document.documentElement;
+                // Por defecto la app usa tema oscuro cuando no hay preferencia guardada
+                if (saved === 'dark' || saved === null) {
+                    html.classList.add('dark');
+                } else {
+                    html.classList.remove('dark');
+                }
+            } catch (e) { /* no bloquear la carga por errores de storage */ }
+        })();
+    </script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Jornada de Trading</title>
