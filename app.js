@@ -1147,13 +1147,37 @@ async function generateSummaries() {
 
         // Usar helpers superiores: readJournalForDate / readManyJournalForDates
 
-        // Generar 4 semanas: semana actual (w=0) y las 3 anteriores (w=1..3)
-        for (let w = 0; w < 4; w++) {
-            const monday = new Date(baseMonday);
-            monday.setDate(baseMonday.getDate() - (w * 7));
+        // Generar tarjetas para todas las semanas que tengan al menos un trade
+        // 1) Recolectar todos los diarios disponibles (localStorage + Firestore)
+        let allJournals = {};
+        try {
+            allJournals = await fetchAllJournalsMerged();
+        } catch (e) {
+            console.warn('No se pudieron leer todos los diarios para generar resúmenes', e);
+            allJournals = {};
+        }
+
+        // 2) Construir conjunto de lunes (inicio de semana) que tengan trades
+        const mondaySet = new Set();
+        Object.keys(allJournals || {}).forEach(dateKey => {
+            const data = allJournals[dateKey];
+            if (!hasTrades(data)) return;
+            const d = new Date(dateKey + 'T00:00:00');
+            const dow = d.getDay() || 7;
+            const monday = new Date(d);
+            monday.setDate(d.getDate() - dow + 1);
+            mondaySet.add(monday.toISOString().split('T')[0]);
+        });
+
+        // 3) Ordenar lunes (más reciente primero)
+        const mondays = Array.from(mondaySet).map(s => new Date(s + 'T00:00:00'));
+        mondays.sort((a, b) => b - a);
+
+        // 4) Iterar cada semana encontrada y renderizar
+        for (let m = 0; m < mondays.length; m++) {
+            const monday = mondays[m];
             const sunday = new Date(monday);
             sunday.setDate(monday.getDate() + 6);
-
             const options = { day: '2-digit', month: '2-digit' };
             const rangeText = `${monday.toLocaleDateString('es-ES', options)} - ${sunday.toLocaleDateString('es-ES', options)}/${monday.getFullYear()}`;
 
@@ -1163,25 +1187,15 @@ async function generateSummaries() {
             let lossDays = 0;
             const dailyRows = [];
 
-            // Preparar lectura paralela de los 7 días de la semana
-            const weekDates = [];
+            // Iterar los 7 días y usar los diarios ya cargados en allJournals
             for (let i = 0; i < 7; i++) {
                 const tempDate = new Date(monday);
                 tempDate.setDate(monday.getDate() + i);
-                weekDates.push(new Date(tempDate));
-            }
-
-            const weekKeys = weekDates.map(d => d.toISOString().split('T')[0]);
-            // Intentar leer en batch (localStorage/cache + Firestore 'in' en chunks)
-            const weekMap = await readManyJournalForDates(weekKeys);
-
-            // Procesar resultados en memoria
-            for (let i = 0; i < weekKeys.length; i++) {
-                const data = weekMap[weekKeys[i]];
-                if (data && ((data.tps && data.tps.length > 0) || (data.sls && data.sls.length > 0))) {
-                    const tempDate = weekDates[i];
-                    const dailyTp = (data.tps || []).reduce((s, it) => s + it.value, 0);
-                    const dailySl = (data.sls || []).reduce((s, it) => s + it.value, 0);
+                const key = tempDate.toISOString().split('T')[0];
+                const data = allJournals[key];
+                if (data && hasTrades(data)) {
+                    const dailyTp = (data.tps || []).reduce((s, it) => s + (Number(it.value) || 0), 0);
+                    const dailySl = (data.sls || []).reduce((s, it) => s + (Number(it.value) || 0), 0);
                     const dailyNet = dailyTp - dailySl;
                     weeklyNet += dailyNet;
                     totalDays++;
@@ -1191,10 +1205,8 @@ async function generateSummaries() {
                 }
             }
 
-            // Ocultar semanas sin trades
-            if (totalDays === 0) {
-                continue; // no renderizar esta semana
-            }
+            // Saltar semanas sin trades (por seguridad)
+            if (totalDays === 0) continue;
 
             // Crear tarjeta de semana con botón toggle
             const card = document.createElement('div');
@@ -1202,7 +1214,7 @@ async function generateSummaries() {
             const weekNetSign = weeklyNet > 0 ? '+' : '';
             const weekNetClass = weeklyNet > 0 ? 'text-green-500 dark:text-green-400' : (weeklyNet < 0 ? 'text-red-500 dark:text-red-400' : 'text-slate-800 dark:text-slate-200');
             const weekId = `week-${monday.toISOString().split('T')[0]}`;
-            const isCurrentWeek = (w === 0);
+            const isCurrentWeek = (monday.toISOString().split('T')[0] === baseMonday.toISOString().split('T')[0]);
             card.innerHTML = `
                 <div class="flex justify-between items-start mb-3">
                     <div class="flex items-center gap-3">
@@ -1231,10 +1243,8 @@ async function generateSummaries() {
                 </div>
             `;
 
-            // Lista de días dentro de la tarjeta
             if (dailyRows.length > 0) {
                 const daysWrapper = document.createElement('div');
-                // Por defecto ocultar los días en todas las semanas
                 daysWrapper.className = 'mt-3 space-y-2 hidden';
                 daysWrapper.id = weekId;
                 dailyRows.forEach(row => {
@@ -1274,21 +1284,19 @@ async function generateSummaries() {
                     });
 
                     daysWrapper.appendChild(div);
+                });
+                card.appendChild(daysWrapper);
+                const toggleBtn = card.querySelector(`button.toggle-week-btn[data-week-id="${weekId}"]`);
+                if (toggleBtn) {
+                    toggleBtn.addEventListener('click', (ev) => {
+                        ev.stopPropagation();
+                        const target = document.getElementById(weekId);
+                        if (!target) return;
+                        const wasHidden = target.classList.toggle('hidden');
+                        toggleBtn.innerText = wasHidden ? 'Ver días' : 'Ocultar días';
+                        toggleBtn.setAttribute('aria-expanded', String(!wasHidden));
                     });
-                    card.appendChild(daysWrapper);
-                    // Asociar comportamiento al botón toggle de esta tarjeta
-                    const toggleBtn = card.querySelector(`button.toggle-week-btn[data-week-id="${weekId}"]`);
-                    if (toggleBtn) {
-                        toggleBtn.addEventListener('click', (ev) => {
-                            ev.stopPropagation();
-                            const target = document.getElementById(weekId);
-                            if (!target) return;
-                            const wasHidden = target.classList.toggle('hidden');
-                            // Actualizar texto y atributo aria-expanded
-                            toggleBtn.innerText = wasHidden ? 'Ver días' : 'Ocultar días';
-                            toggleBtn.setAttribute('aria-expanded', String(!wasHidden));
-                        });
-                    }
+                }
             } else {
                 const empty = document.createElement('div');
                 empty.className = 'text-center text-slate-400 dark:text-slate-500 text-sm py-3';
