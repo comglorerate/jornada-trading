@@ -1042,6 +1042,28 @@ async function clearAll() {
         showToast('Ocurrió un error al eliminar datos en la nube', 'error', 4000);
     }
 
+    // Hacer una pasada final para eliminar cualquier clave `trading_` que pudiera quedar
+    try {
+        let finalRemoved = 0;
+        const keys = getLocalTradingKeys();
+        for (const k of keys) {
+            try { localStorage.removeItem(`trading_${k}`); finalRemoved++; } catch (e) { /* ignore */ }
+        }
+        if (finalRemoved > 0) {
+            showToast(`Eliminados ${finalRemoved} día(s) restantes en local`, 'success', 2000);
+        }
+    } catch (e) {
+        console.warn('Error en limpieza final de localStorage', e);
+    }
+
+    // Forzar limpieza de cachés y UI
+    try { __journalCache.clear(); } catch (e) { /* ignore */ }
+    try {
+        const weeklyContainer = document.getElementById('weekly-summaries'); if (weeklyContainer) weeklyContainer.innerHTML = '';
+        const monthlyContainer = document.getElementById('monthly-summaries'); if (monthlyContainer) monthlyContainer.innerHTML = '';
+        const dailyContainer = document.getElementById('daily-summary-list'); if (dailyContainer) dailyContainer.innerHTML = '';
+    } catch (e) { /* ignore */ }
+
     // Recargar la página para que la UI se actualice inmediatamente
     try { setTimeout(() => { location.reload(); }, 150); } catch (e) { /* ignore */ }
 }
