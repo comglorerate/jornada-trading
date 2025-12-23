@@ -1321,15 +1321,29 @@ async function generateSummaries() {
                     wkKeys.push(d.toISOString().split('T')[0]);
                 }
                 try {
-                    const weekMap = await readManyJournalForDates(wkKeys);
-                    for (let i = 0; i < wkKeys.length; i++) {
-                        const key = wkKeys[i];
-                        const data = weekMap[key];
-                        if (data && ((data.tps && data.tps.length > 0) || (data.sls && data.sls.length > 0))) {
-                            const tp = (data.tps || []).reduce((s, it) => s + it.value, 0);
-                            const sl = (data.sls || []).reduce((s, it) => s + it.value, 0);
-                            const net = tp - sl;
-                            addDailyRow(wkDates[i], tp, sl, net);
+                    // Si previamente cargamos todos los diarios (fetchAllJournalsMerged), reutilizarlos
+                    if (allJournals && Object.keys(allJournals).length > 0) {
+                        for (let i = 0; i < wkKeys.length; i++) {
+                            const key = wkKeys[i];
+                            const data = allJournals[key];
+                            if (data && ((data.tps && data.tps.length > 0) || (data.sls && data.sls.length > 0))) {
+                                const tp = (data.tps || []).reduce((s, it) => s + (Number(it.value) || 0), 0);
+                                const sl = (data.sls || []).reduce((s, it) => s + (Number(it.value) || 0), 0);
+                                const net = tp - sl;
+                                addDailyRow(wkDates[i], tp, sl, net);
+                            }
+                        }
+                    } else {
+                        const weekMap = await readManyJournalForDates(wkKeys);
+                        for (let i = 0; i < wkKeys.length; i++) {
+                            const key = wkKeys[i];
+                            const data = weekMap[key];
+                            if (data && ((data.tps && data.tps.length > 0) || (data.sls && data.sls.length > 0))) {
+                                const tp = (data.tps || []).reduce((s, it) => s + it.value, 0);
+                                const sl = (data.sls || []).reduce((s, it) => s + it.value, 0);
+                                const net = tp - sl;
+                                addDailyRow(wkDates[i], tp, sl, net);
+                            }
                         }
                     }
                 } catch (e) {
