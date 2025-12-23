@@ -25,6 +25,20 @@ function toggleTheme() {
     }
 })();
 
+// Evita mostrar contenido público hasta que la autenticación inicial esté lista
+(function guardInitialRender() {
+    const body = document.body;
+    if (!body) return;
+
+    const releaseGate = () => {
+        if (!body.classList.contains('auth-pending')) return;
+        body.classList.remove('auth-pending');
+    };
+
+    window.addEventListener('firebase-auth-ready', releaseGate, { once: true });
+    setTimeout(releaseGate, 2500); // Fallback por si el evento no llega a dispararse
+})();
+
 // --- LÓGICA DE TRADING ---
 let currentData = { tps: [], sls: [] };
 const DEFAULT_START_CAPITAL = 100.00;

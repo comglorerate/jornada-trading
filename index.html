@@ -27,6 +27,15 @@
             darkMode: 'class', // Activar modo oscuro manual
         }
     </script>
+    <style>
+        /* Mantener el bloqueador visible hasta confirmar sesión */
+        #auth-blocker {
+            display: none;
+        }
+        body.auth-pending #auth-blocker {
+            display: flex;
+        }
+    </style>
     <!-- Iconos FontAwesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
@@ -89,7 +98,13 @@
   </div>
 </div>
 
-<body class="bg-[#f0f4f8] dark:bg-slate-900 text-slate-800 dark:text-slate-100 pb-20 theme-transition overflow-x-hidden">
+<body class="bg-[#f0f4f8] dark:bg-slate-900 text-slate-800 dark:text-slate-100 pb-20 theme-transition overflow-x-hidden auth-pending">
+
+    <div id="auth-blocker" class="hidden fixed inset-0 z-50 bg-white/90 dark:bg-slate-900/90 flex flex-col items-center justify-center gap-3 text-slate-700 dark:text-slate-200" role="status" aria-live="polite">
+        <div class="h-14 w-14 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+        <div class="text-base font-semibold">Validando sesión...</div>
+    </div>
+
 
     <!-- BOTÓN MODO OSCURO (Flotante o en Header) -->
     <div class="absolute top-6 right-6">
