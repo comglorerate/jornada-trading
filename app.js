@@ -46,6 +46,12 @@ function normalizeCurrentData() {
     if (!Array.isArray(currentData.tps)) currentData.tps = [];
     if (!Array.isArray(currentData.sls)) currentData.sls = [];
 }
+// Capital dinámico: configuración y estado
+const CAPITAL_STORAGE_KEY = 'trading_capital_config';
+let capitalConfig = { initial: 1000 };
+let capitalTimeline = []; // [{ dateKey, factor, capital, relativePct }]
+let __capitalRecalcTimer = null;
+let __isCalculatingCapital = false;
 const DATE_STORAGE_KEY = 'trading_selected_date';
 
 const datePicker = document.getElementById('datePicker');
@@ -80,6 +86,7 @@ datePicker.value = initialDate;
 
 // Inicializar: carga rápida local y luego Firestore si está disponible
 loadData();
+initCapitalFeature();
 
 // Sincronización automática al iniciar sesión / restaurar auth
 window.addEventListener('firebase-auth-ready', async () => {
@@ -88,6 +95,14 @@ window.addEventListener('firebase-auth-ready', async () => {
 
     // 2) Actualizar UI de autenticación
     updateAuthUI();
+
+    // 2b) Sincronizar capital inicial remoto y recalcular
+    try {
+        await loadCapitalConfig(true);
+        scheduleCapitalRecalc(0);
+    } catch (e) {
+        console.warn('No se pudo refrescar capital tras auth', e);
+    }
 
     // 3) Si el usuario está autenticado con cuenta (no anónima),
     //    intentar migrar automáticamente datos locales que aún no estén en Firestore.
@@ -118,6 +133,7 @@ datePicker.addEventListener('change', () => {
     localStorage.setItem(DATE_STORAGE_KEY, datePicker.value);
     loadData();
     scheduleGenerateSummaries();
+    renderCapitalDisplays(getCurrentNet());
 });
 
 let _unsubscribeJournalCollectionListener = null;
@@ -261,6 +277,262 @@ async function readManyJournalForDates(keys) {
     return out;
 }
 
+// --- CAPITAL DINÁMICO (config + cálculo determinístico) ---
+function sanitizeCapitalValue(val, fallback = 1000) {
+    const n = Number(val);
+    if (!Number.isFinite(n) || n <= 0) return fallback;
+    return n;
+}
+
+function formatCurrency(val) {
+    try {
+        return new Intl.NumberFormat('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(val);
+    } catch (e) {
+        return (val || 0).toFixed(2);
+    }
+}
+
+async function loadCapitalConfig(forceRemote = false) {
+    // Cargar desde localStorage primero
+    try {
+        const raw = localStorage.getItem(CAPITAL_STORAGE_KEY);
+        if (raw) {
+            const parsed = JSON.parse(raw);
+            capitalConfig.initial = sanitizeCapitalValue(parsed.initial, capitalConfig.initial);
+        }
+    } catch (e) { /* ignore parse errors */ }
+
+    // Intentar obtener desde Firestore si está disponible
+    if (hasFirestore()) {
+        try {
+            const db = window._firebase.db;
+            const uid = window._firebase.uid;
+            if (uid) {
+                const docRef = window.firebaseFirestoreDoc(db, 'users', uid, 'config', 'capital');
+                const snap = await window.firebaseFirestoreGetDoc(docRef);
+                if (snap && snap.exists && snap.exists()) {
+                    const data = snap.data() || {};
+                    const candidate = data.initialCapital ?? data.initial;
+                    capitalConfig.initial = sanitizeCapitalValue(candidate, capitalConfig.initial);
+                } else if (forceRemote) {
+                    await window.firebaseFirestoreSetDoc(docRef, { initialCapital: capitalConfig.initial });
+                }
+            }
+        } catch (err) {
+            console.warn('No se pudo cargar capital desde Firestore', err);
+        }
+    }
+
+    try {
+        localStorage.setItem(CAPITAL_STORAGE_KEY, JSON.stringify({ initial: capitalConfig.initial }));
+    } catch (e) { /* ignore */ }
+
+    const input = document.getElementById('capital-input');
+    if (input) input.value = capitalConfig.initial;
+}
+
+async function saveCapitalConfigRemote(value) {
+    if (!hasFirestore()) return;
+    const uid = window._firebase.uid;
+    if (!uid) return;
+    try {
+        const docRef = window.firebaseFirestoreDoc(window._firebase.db, 'users', uid, 'config', 'capital');
+        await window.firebaseFirestoreSetDoc(docRef, { initialCapital: value });
+    } catch (err) {
+        console.warn('No se pudo guardar capital en Firestore', err);
+    }
+}
+
+function persistCapitalConfig(value) {
+    capitalConfig.initial = sanitizeCapitalValue(value, capitalConfig.initial);
+    try { localStorage.setItem(CAPITAL_STORAGE_KEY, JSON.stringify({ initial: capitalConfig.initial })); } catch (e) { /* ignore */ }
+    saveCapitalConfigRemote(capitalConfig.initial);
+    scheduleCapitalRecalc(0);
+    renderCapitalDisplays(getCurrentNet());
+}
+
+function setupCapitalInput() {
+    const input = document.getElementById('capital-input');
+    if (!input) return;
+    const handler = () => {
+        const val = parseFloat(input.value);
+        if (!Number.isFinite(val) || val <= 0) {
+            showToast('Ingresa un capital inicial válido', 'error');
+            input.value = capitalConfig.initial;
+            return;
+        }
+        if (Math.abs(val - capitalConfig.initial) < 1e-6) return;
+        persistCapitalConfig(val);
+    };
+    input.addEventListener('change', handler);
+    input.addEventListener('blur', handler);
+}
+
+function normalizeTradeEntry(item, idx, type) {
+    const safeValue = Number(item && item.value);
+    const value = Number.isFinite(safeValue) ? Math.abs(safeValue) : 0;
+    const id = (item && (item.id || item.id === 0)) ? Number(item.id) : idx;
+    return {
+        id: Number.isFinite(id) ? id : idx,
+        value,
+        asset: (item && item.asset ? String(item.asset).trim().toUpperCase() : '---') || '---',
+        type
+    };
+}
+
+function normalizeJournalData(data) {
+    return {
+        tps: Array.isArray(data && data.tps) ? data.tps.map((it, idx) => normalizeTradeEntry(it, idx, 'tp')) : [],
+        sls: Array.isArray(data && data.sls) ? data.sls.map((it, idx) => normalizeTradeEntry(it, idx, 'sl')) : []
+    };
+}
+
+function hasTrades(data) {
+    if (!data) return false;
+    return (Array.isArray(data.tps) && data.tps.length > 0) || (Array.isArray(data.sls) && data.sls.length > 0);
+}
+
+async function fetchAllJournalsMerged() {
+    const merged = {};
+
+    // 1) LocalStorage
+    const localKeys = getLocalTradingKeys();
+    for (const k of localKeys) {
+        try {
+            const raw = localStorage.getItem(`trading_${k}`);
+            if (!raw) continue;
+            merged[k] = normalizeJournalData(JSON.parse(raw));
+        } catch (e) { /* ignore parse errors */ }
+    }
+
+    // 2) Estado actual (por si aún no se guardó)
+    if (datePicker && datePicker.value && !merged[datePicker.value]) {
+        merged[datePicker.value] = normalizeJournalData(currentData);
+    }
+
+    // 3) Firestore (solo para keys que no estén localmente)
+    if (hasFirestore()) {
+        try {
+            const mod = await ensureFirestoreModule();
+            if (mod) {
+                const { collection, getDocs } = mod;
+                const collRef = collection(window._firebase.db, 'users', window._firebase.uid, 'journals');
+                const snap = await getDocs(collRef);
+                snap.forEach(docSnap => {
+                    const id = docSnap.id;
+                    if (!id) return;
+                    if (merged[id] && hasTrades(merged[id])) return; // preferir local si ya hay datos
+                    merged[id] = normalizeJournalData(docSnap.data() || {});
+                });
+            }
+        } catch (err) {
+            console.warn('No se pudieron leer todos los diarios para capital', err);
+        }
+    }
+
+    return merged;
+}
+
+function computeCapitalTimelineFromJournals(journalMap) {
+    const keys = Object.keys(journalMap || {}).sort();
+    const timeline = [];
+    let cumulativeNet = 0;
+
+    for (const dateKey of keys) {
+        const data = journalMap[dateKey];
+        if (!data) continue;
+        const tpSum = (data.tps || []).reduce((acc, tp) => acc + (Number(tp.value) || 0), 0);
+        const slSum = (data.sls || []).reduce((acc, sl) => acc + (Number(sl.value) || 0), 0);
+        const dailyNet = tpSum - slSum;
+        if (!dailyNet) continue;
+
+        cumulativeNet += dailyNet;
+        const capital = capitalConfig.initial + cumulativeNet;
+        const relativePct = (cumulativeNet / capitalConfig.initial) * 100;
+
+        timeline.push({
+            dateKey,
+            cumulativeNet,
+            capital,
+            relativePct
+        });
+    }
+
+    return timeline;
+}
+
+function getCapitalSnapshot() {
+    const base = {
+        factor: 1,
+        capital: capitalConfig.initial,
+        relativePct: 0
+    };
+    if (!capitalTimeline || capitalTimeline.length === 0) return base;
+    return capitalTimeline[capitalTimeline.length - 1];
+}
+
+function renderCapitalDisplays(netForDay = null) {
+    const capitalSnap = getCapitalSnapshot();
+    const pct = capitalSnap.relativePct;
+    const abs = capitalSnap.capital;
+    const pctSign = pct > 0 ? '+' : '';
+    const pctColor = pct > 0 ? 'text-green-500 dark:text-green-400' : (pct < 0 ? 'text-red-500 dark:text-red-400' : 'text-slate-800 dark:text-slate-200');
+
+    const absEl = document.getElementById('capital-abs-display');
+    const pctEl = document.getElementById('capital-pct-display');
+    if (absEl) absEl.innerText = formatCurrency(abs);
+    if (pctEl) pctEl.innerText = '';
+
+    const mainEl = document.getElementById('main-profit-display');
+    if (mainEl) {
+        const net = netForDay === null ? getCurrentNet() : netForDay;
+        const netSign = net > 0 ? '+' : '';
+        const netColor = net > 0 ? 'text-green-500 dark:text-green-400' : (net < 0 ? 'text-red-500 dark:text-red-400' : 'text-slate-600 dark:text-slate-300');
+        const icon = net >= 0 ? 'fa-arrow-trend-up' : 'fa-arrow-trend-down';
+        mainEl.innerHTML = `
+            <div class="text-2xl font-bold flex items-center justify-center gap-2 ${netColor}">
+                <i class="fa-solid ${icon}"></i>
+                Profit Total: ${netSign}${net.toFixed(2)}%
+            </div>
+        `;
+    }
+}
+
+function scheduleCapitalRecalc(delay = 200) {
+    if (__capitalRecalcTimer) clearTimeout(__capitalRecalcTimer);
+    __capitalRecalcTimer = setTimeout(() => {
+        __capitalRecalcTimer = null;
+        recalcCapitalTimeline();
+    }, delay);
+}
+
+function getCurrentNet() {
+    const tpTotal = currentData.tps.reduce((acc, curr) => acc + (Number(curr.value) || 0), 0);
+    const slTotal = currentData.sls.reduce((acc, curr) => acc + (Number(curr.value) || 0), 0);
+    return tpTotal - slTotal;
+}
+
+async function recalcCapitalTimeline() {
+    if (__isCalculatingCapital) return;
+    __isCalculatingCapital = true;
+    try {
+        const journals = await fetchAllJournalsMerged();
+        capitalTimeline = computeCapitalTimelineFromJournals(journals);
+    } catch (err) {
+        console.warn('No se pudo recalcular el capital', err);
+    } finally {
+        __isCalculatingCapital = false;
+        renderCapitalDisplays(getCurrentNet());
+    }
+}
+
+async function initCapitalFeature() {
+    try { await loadCapitalConfig(); } catch (e) { /* ignore */ }
+    try { setupCapitalInput(); } catch (e) { /* ignore */ }
+    renderCapitalDisplays(getCurrentNet());
+    scheduleCapitalRecalc(0);
+}
+
 // Debounce para generación de resúmenes: evita llamadas redundantes y chequea visibilidad
 let __generateSummariesTimer = null;
 function scheduleGenerateSummaries(delay = 250) {
@@ -287,6 +559,8 @@ function loadData() {
 
     normalizeCurrentData();
     renderUI();
+    scheduleCapitalRecalc();
+    renderCapitalDisplays(getCurrentNet());
 }
 
 // Carga desde Firestore si hay auth/db, y reemplaza currentData
@@ -321,6 +595,7 @@ async function loadDataFirestore() {
         }
         normalizeCurrentData();
         renderUI();
+        scheduleCapitalRecalc();
 
         // 2) Limpiar cualquier listener anterior
         if (typeof _unsubscribeJournalListener === 'function') {
@@ -352,6 +627,7 @@ async function loadDataFirestore() {
                                 };
                                 // No tocar localStorage aquí para no pisar datos offline propios
                                 renderUI();
+                                scheduleCapitalRecalc();
                                 scheduleGenerateSummaries();
                             }
                         }
@@ -377,6 +653,7 @@ async function saveData() {
     // Siempre mantén un cache local por velocidad
     localStorage.setItem(storageKey, JSON.stringify(currentData));
     renderUI();
+    scheduleCapitalRecalc();
 
     // Generar resúmenes si están visibles
     scheduleGenerateSummaries();
@@ -723,6 +1000,7 @@ async function clearAll() {
     currentData = { tps: [], sls: [] };
     normalizeCurrentData();
     renderUI();
+    scheduleCapitalRecalc();
     // Limpiar los contenedores de resúmenes para que no se muestren datos antiguos
     try {
         const weeklyContainer = document.getElementById('weekly-summaries'); if (weeklyContainer) weeklyContainer.innerHTML = '';
@@ -822,16 +1100,14 @@ function updateTotals() {
     document.getElementById('footer-sl').innerText = '-' + slTotal.toFixed(2) + '%';
     
     const netEl = document.getElementById('footer-net');
-    const mainEl = document.getElementById('main-profit-display');
 
     let sign = net > 0 ? '+' : '';
     let colorClass = net > 0 ? 'text-green-500 dark:text-green-400' : (net < 0 ? 'text-red-500 dark:text-red-400' : 'text-slate-800 dark:text-slate-200');
-    let icon = net >= 0 ? 'fa-arrow-trend-up' : 'fa-arrow-trend-down';
 
     netEl.innerText = sign + net.toFixed(2) + '%';
     netEl.className = "font-bold text-lg " + colorClass;
 
-    mainEl.innerHTML = `<i class="fa-solid ${icon} mr-2 text-sm ${colorClass}"></i> Profit Total: <span class="${colorClass}">${sign}${net.toFixed(2)}%</span>`;
+    renderCapitalDisplays(net);
 }
 
 // --- RESÚMENES ---
