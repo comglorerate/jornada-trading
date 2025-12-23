@@ -1368,12 +1368,27 @@ async function generateSummaries() {
             for (let d = new Date(first); d <= last; d.setDate(d.getDate() + 1)) {
                 monthKeys.push(new Date(d).toISOString().split('T')[0]);
             }
-            const monthMap = await readManyJournalForDates(monthKeys);
+            // Preferir datos ya cargados (allJournals) para evitar lecturas obsoletas
+            let monthMap = {};
+            try {
+                if (allJournals && Object.keys(allJournals).length > 0) {
+                    for (let i = 0; i < monthKeys.length; i++) {
+                        const k = monthKeys[i];
+                        monthMap[k] = allJournals[k] || null;
+                    }
+                } else {
+                    monthMap = await readManyJournalForDates(monthKeys);
+                }
+            } catch (e) {
+                console.warn('Error leyendo mes en batch', e);
+                monthMap = {};
+            }
+
             for (let i = 0; i < monthKeys.length; i++) {
                 const data = monthMap[monthKeys[i]];
                 if (data && ((data.tps && data.tps.length > 0) || (data.sls && data.sls.length > 0))) {
-                    const tp = (data.tps || []).reduce((s, it) => s + it.value, 0);
-                    const sl = (data.sls || []).reduce((s, it) => s + it.value, 0);
+                    const tp = (data.tps || []).reduce((s, it) => s + (Number(it.value) || 0), 0);
+                    const sl = (data.sls || []).reduce((s, it) => s + (Number(it.value) || 0), 0);
                     const net = tp - sl;
                     monthNet += net;
                     monthTotalDays++;
