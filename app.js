@@ -489,7 +489,7 @@ function renderCapitalDisplays(netForDay = null) {
             pctEl.innerHTML = '&nbsp;';
             pctEl.className = 'kpi-hint tabular-nums';
         } else {
-            pctEl.innerText = `${pctSign}${pct.toFixed(2)}% acumulado`;
+            pctEl.innerText = `${pctSign}${pct.toFixed(2)}%`;
             pctEl.className = `kpi-hint tabular-nums ${pctColor}`;
         }
     }
@@ -999,13 +999,12 @@ async function saveData() {
 
         await __pendingSave;
 
-        // éxito
+        // éxito: solo actualiza el indicador visual del estado de sync (sin toast)
         if (statusSync) {
             statusSync.classList.remove('animate-pulse','bg-yellow-400');
             statusSync.classList.add('bg-green-400');
             statusSync.title = 'Sincronización OK';
         }
-        showToast('sincronizado correctamente', 'success', 1800);
     } catch (err) {
         console.warn('No se pudo guardar en Firestore:', err);
         const statusSync = document.getElementById('auth-sync');
