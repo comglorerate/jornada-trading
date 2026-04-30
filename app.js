@@ -107,39 +107,13 @@ datePicker.value = initialDate;
 loadData();
 initCapitalFeature();
 
-// Sincronización automática al iniciar sesión / restaurar auth
-window.addEventListener('firebase-auth-ready', async () => {
-    // 1) Cargar datos remotos de la fecha actual y enganchar listener en tiempo real
-    try { await loadDataFirestore(); } catch (e) { /* ignore */ }
-
-    // 2) Actualizar UI de autenticación
-    updateAuthUI();
-
-    // 2b) Sincronizar capital inicial remoto y recalcular
-    try {
-        await loadCapitalConfig(true);
-        scheduleCapitalRecalc(0);
-    } catch (e) {
-        console.warn('No se pudo refrescar capital tras auth', e);
-    }
-
-    // 3) Si el usuario está autenticado con cuenta (no anónima),
-    //    intentar migrar automáticamente datos locales que aún no estén en Firestore.
-    try {
-        const uid = window._firebase && window._firebase.uid;
-        const user = window._firebase && window._firebase.auth && window._firebase.auth.currentUser;
-        const localKeys = getLocalTradingKeys();
-
-        // Solo migrar automáticamente si el usuario tiene una cuenta (email)
-        if (uid && user && user.email && localKeys.length > 0) {
-            // Migrar en background sin mostrar botón ni forzar interacción.
-            migrateLocalToFirestore(false).catch(err => {
-                console.warn('Error en migración automática local->Firestore', err);
-            });
-        }
-    } catch (e) {
-        console.warn('Error comprobando migración automática local->firestore', e);
-    }
+// Nota: la carga de datos al iniciar sesión y al restaurar sesión persistida
+// se gestiona ahora desde watchAuthChanges() → onAuthChange() →
+// refreshUserDataAfterLogin(), que detecta la transición desconectado→conectado
+// y dispara la carga completa (capital + diario + recalc + migración).
+// Solo dejamos aquí la actualización mínima de UI.
+window.addEventListener('firebase-auth-ready', () => {
+    try { updateAuthUI(); } catch (e) { /* ignore */ }
 });
 
 // También intenta cuando firebase-init.js fue cargado antes
@@ -2079,19 +2053,56 @@ function toggleMobileMenu() {
     }
 }
 
+// Refresca todos los datos del usuario actual (llamado tras un login real,
+// o tras restaurar sesión persistida).
+async function refreshUserDataAfterLogin() {
+    try { await loadCapitalConfig(true); } catch (e) { console.warn('Error cargando capital tras login', e); }
+    try { await loadDataFirestore(); } catch (e) { console.warn('Error cargando diario tras login', e); }
+    try { scheduleCapitalRecalc(0); } catch (e) {}
+    try { scheduleGenerateSummaries(80); } catch (e) {}
+    try { updateAuthUI(); } catch (e) {}
+    // Migración silenciosa de datos locales si el usuario tiene cuenta con email
+    try {
+        const uid = window._firebase && window._firebase.uid;
+        const user = window._firebase && window._firebase.auth && window._firebase.auth.currentUser;
+        const localKeys = getLocalTradingKeys();
+        if (uid && user && user.email && localKeys.length > 0) {
+            migrateLocalToFirestore(false).catch(err => {
+                console.warn('Error en migración local->Firestore', err);
+            });
+        }
+    } catch (e) { /* ignore */ }
+}
+
 // Watch for auth changes when firebase becomes available
 function watchAuthChanges() {
+    let __previousUid = (window._firebase && window._firebase.uid) || null;
+
+    const onAuthChange = () => {
+        const newUid = (window._firebase && window._firebase.uid) || null;
+
+        if (newUid && newUid !== __previousUid) {
+            // Transición: anónimo/desconectado → conectado, o cambio de cuenta.
+            // Hacer un refresh completo para que la UI refleje los datos del usuario.
+            ensureJournalCollectionListener();
+            refreshUserDataAfterLogin();
+        } else if (!newUid && __previousUid) {
+            // Transición: conectado → desconectado.
+            cleanupJournalCollectionListener();
+            updateAuthUI();
+        } else {
+            // Mismo estado: solo actualizar UI por si hay cambios cosméticos.
+            updateAuthUI();
+        }
+
+        __previousUid = newUid;
+    };
+
     if (window._firebase && window._firebase.auth) {
         const auth = window._firebase.auth;
-        auth.onAuthStateChanged(() => {
-            if (window._firebase && window._firebase.uid) {
-                ensureJournalCollectionListener();
-            } else {
-                cleanupJournalCollectionListener();
-            }
-            updateAuthUI();
-        });
-        // initial update
+        auth.onAuthStateChanged(onAuthChange);
+
+        // Estado inicial
         updateAuthUI();
         if (window._firebase && window._firebase.uid) {
             ensureJournalCollectionListener();
@@ -2101,7 +2112,7 @@ function watchAuthChanges() {
     } else {
         window.addEventListener('firebase-auth-ready', () => {
             if (window._firebase && window._firebase.auth) {
-                window._firebase.auth.onAuthStateChanged(() => updateAuthUI());
+                window._firebase.auth.onAuthStateChanged(onAuthChange);
             }
             updateAuthUI();
             if (window._firebase && window._firebase.uid) {
