@@ -207,6 +207,26 @@ button:focus-visible {
     text-align: right;
     font-variant-numeric: tabular-nums;
     font-weight: 600;
+    /* Sin spinner nativo del navegador */
+    -moz-appearance: textfield;
+    appearance: textfield;
+}
+.trade-pct::-webkit-outer-spin-button,
+.trade-pct::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    appearance: none;
+    margin: 0;
+}
+/* Quitar el spinner también de los inputs de edición inline */
+.inline-editor input[type=number] {
+    -moz-appearance: textfield;
+    appearance: textfield;
+}
+.inline-editor input[type=number]::-webkit-outer-spin-button,
+.inline-editor input[type=number]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    appearance: none;
+    margin: 0;
 }
 .trade-add-btn {
     width: 48px;
@@ -640,7 +660,7 @@ button:focus-visible {
     width: 100%;
 }
 @media (max-width: 480px) {
-    .heatmap { padding: 0.7rem; }
+    .heatmap { padding: 0.85rem 0.5rem; }
 }
 .heatmap-header {
     display: grid;
@@ -660,13 +680,13 @@ button:focus-visible {
     gap: 8px;
 }
 @media (max-width: 480px) {
-    .heatmap-header, .heatmap-grid { gap: 5px; }
-    .heatmap-header { font-size: 0.62rem; }
+    .heatmap-header, .heatmap-grid { gap: 4px; }
+    .heatmap-header { font-size: 0.6rem; margin-bottom: 6px; }
 }
 .heatmap-cell {
     /* Cuadrado en móvil, rectangular más bajo en escritorio para evitar scroll */
     aspect-ratio: 1;
-    border-radius: 6px;
+    border-radius: 7px;
     background: rgba(148, 163, 184, 0.10);
     border: 1px solid transparent;
     position: relative;
@@ -679,8 +699,12 @@ button:focus-visible {
     align-items: stretch;
     padding: 5px 6px;
     min-width: 0;
-    min-height: 48px;
-    max-height: 78px;
+}
+@media (max-width: 480px) {
+    .heatmap-cell {
+        padding: 4px 4px;
+        border-radius: 6px;
+    }
 }
 @media (min-width: 768px) {
     .heatmap-cell {
