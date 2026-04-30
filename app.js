@@ -1342,7 +1342,6 @@ async function clearAll() {
     // Limpiar los contenedores de resúmenes para que no se muestren datos antiguos
     try {
         const monthlyContainer = document.getElementById('monthly-summaries'); if (monthlyContainer) monthlyContainer.innerHTML = '';
-        const dailyContainer = document.getElementById('daily-summary-list'); if (dailyContainer) dailyContainer.innerHTML = '';
         const summariesSection = document.getElementById('summaries-section'); if (summariesSection) summariesSection.classList.add('hidden');
     } catch (e) { /* ignore */ }
 
@@ -1397,7 +1396,6 @@ async function clearAll() {
     try { __journalCache.clear(); } catch (e) { /* ignore */ }
     try {
         const monthlyContainer = document.getElementById('monthly-summaries'); if (monthlyContainer) monthlyContainer.innerHTML = '';
-        const dailyContainer = document.getElementById('daily-summary-list'); if (dailyContainer) dailyContainer.innerHTML = '';
     } catch (e) { /* ignore */ }
 
     // Recargar la página para que la UI se actualice inmediatamente
@@ -1503,16 +1501,9 @@ async function generateSummaries() {
     window._isGeneratingSummaries = true;
     try { showSummariesLoading(); } catch(e) {}
     try {
-        const selectedDate = new Date(datePicker.value + "T00:00:00");
-        const dayOfWeek = selectedDate.getDay() || 7;
-        const baseMonday = new Date(selectedDate);
-        baseMonday.setDate(selectedDate.getDate() - dayOfWeek + 1);
-
         const monthlyContainer = document.getElementById('monthly-summaries');
-        const dailyContainer = document.getElementById('daily-summary-list');
-        if (!dailyContainer && !monthlyContainer) return;
-        if (monthlyContainer) monthlyContainer.innerHTML = '';
-        if (dailyContainer) dailyContainer.innerHTML = '';
+        if (!monthlyContainer) return;
+        monthlyContainer.innerHTML = '';
 
         // Recolectar todos los diarios disponibles (localStorage + Firestore)
         let allJournals = {};
@@ -1521,53 +1512,6 @@ async function generateSummaries() {
         } catch (e) {
             console.warn('No se pudieron leer todos los diarios para generar resúmenes', e);
             allJournals = {};
-        }
-
-        // Rellenar la vista 'Día' solo con los días de la semana actual (baseMonday..baseMonday+6)
-        try {
-            if (dailyContainer) {
-                // Ya limpiado arriba; ahora iterar la semana actual (leer en batch)
-                const weekStart = new Date(baseMonday);
-                const wkKeys = [];
-                const wkDates = [];
-                for (let i = 0; i < 7; i++) {
-                    const d = new Date(weekStart);
-                    d.setDate(weekStart.getDate() + i);
-                    wkDates.push(d);
-                    wkKeys.push(localDateKey(d));
-                }
-                try {
-                    // Si previamente cargamos todos los diarios (fetchAllJournalsMerged), reutilizarlos
-                    if (allJournals && Object.keys(allJournals).length > 0) {
-                        for (let i = 0; i < wkKeys.length; i++) {
-                            const key = wkKeys[i];
-                            const data = allJournals[key];
-                            if (data && ((data.tps && data.tps.length > 0) || (data.sls && data.sls.length > 0))) {
-                                const tp = (data.tps || []).reduce((s, it) => s + (Number(it.value) || 0), 0);
-                                const sl = (data.sls || []).reduce((s, it) => s + (Number(it.value) || 0), 0);
-                                const net = tp - sl;
-                                addDailyRow(wkDates[i], tp, sl, net);
-                            }
-                        }
-                    } else {
-                        const weekMap = await readManyJournalForDates(wkKeys);
-                        for (let i = 0; i < wkKeys.length; i++) {
-                            const key = wkKeys[i];
-                            const data = weekMap[key];
-                            if (data && ((data.tps && data.tps.length > 0) || (data.sls && data.sls.length > 0))) {
-                                const tp = (data.tps || []).reduce((s, it) => s + it.value, 0);
-                                const sl = (data.sls || []).reduce((s, it) => s + it.value, 0);
-                                const net = tp - sl;
-                                addDailyRow(wkDates[i], tp, sl, net);
-                            }
-                        }
-                    }
-                } catch (e) {
-                    console.warn('Error leyendo semana en batch', e);
-                }
-            }
-        } catch (e) {
-            console.warn('Error rellenando vista Día', e);
         }
 
         // Generar resumen mensual: una tarjeta por cada mes con trades registrados
@@ -1711,113 +1655,6 @@ async function generateSummaries() {
         try { hideSummariesLoading(); } catch (e) {}
         window._isGeneratingSummaries = false;
     }
-}
-
-// --- VISTAS DE RESUMEN (Día / Mes) ---
-function setSummaryView(view) {
-    try {
-        // Solo se aceptan 'day' o 'month' (la vista 'week' fue retirada;
-        // las semanas viven dentro del despliegue de cada mes)
-        if (view !== 'day' && view !== 'month') view = 'day';
-
-        const dailyPanel = document.getElementById('daily-panel');
-        const monthlyPanel = document.getElementById('monthly-panel');
-
-        if (dailyPanel) dailyPanel.classList.toggle('hidden', view !== 'day');
-        if (monthlyPanel) monthlyPanel.classList.toggle('hidden', view !== 'month');
-
-        // Actualizar estados de botones
-        const dayBtn = document.getElementById('summary-view-day');
-        const monthBtn = document.getElementById('summary-view-month');
-        [dayBtn, monthBtn].forEach(b => {
-            if (!b) return;
-            b.classList.remove('bg-blue-600','text-white');
-            b.classList.add('text-slate-600','dark:text-slate-200');
-        });
-        const active = document.querySelector(`#summary-view-toggle button[data-view="${view}"]`);
-        if (active) {
-            active.classList.add('bg-blue-600','text-white');
-            active.classList.remove('text-slate-600','dark:text-slate-200');
-        }
-
-        localStorage.setItem('summary_view', view);
-
-        // Si la sección de resúmenes está visible, asegurar que el contenido
-        // está al día al cambiar de pestaña (genera si no había nada).
-        const section = document.getElementById('summaries-section');
-        if (section && !section.classList.contains('hidden')) {
-            scheduleGenerateSummaries(50);
-        }
-    } catch (e) {
-        console.warn('setSummaryView error', e);
-    }
-}
-
-function initSummaryView() {
-    const toggle = document.getElementById('summary-view-toggle');
-    if (!toggle) return;
-    const dayBtn = document.getElementById('summary-view-day');
-    const monthBtn = document.getElementById('summary-view-month');
-    [dayBtn, monthBtn].forEach(b => {
-        if (!b) return;
-        b.addEventListener('click', () => {
-            const v = b.dataset && b.dataset.view ? b.dataset.view : (b.id || '').replace('summary-view-','');
-            setSummaryView(v);
-        });
-    });
-
-    // Migrar preferencia legada 'week' a 'day'
-    let saved = localStorage.getItem('summary_view') || 'day';
-    if (saved === 'week') saved = 'day';
-    setSummaryView(saved);
-}
-
-// Asegurar inicialización tras carga del DOM (scripts están al final, pero por si acaso)
-window.addEventListener('DOMContentLoaded', initSummaryView);
-
-function addDailyRow(dateObj, tp, sl, net) {
-    const container = document.getElementById('daily-summary-list');
-    const dateStr = dateObj.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
-    const dateCap = dateStr.charAt(0).toUpperCase() + dateStr.slice(1);
-
-    const netColor = net > 0 ? 'text-green-600 dark:text-green-400' : (net < 0 ? 'text-red-600 dark:text-red-400' : 'text-slate-600 dark:text-slate-300');
-    const dotColor = net > 0 ? 'text-green-500' : (net < 0 ? 'text-red-500' : 'text-gray-300');
-    const sign = net > 0 ? '+' : '';
-
-    const div = document.createElement('div');
-    // Hacer la fila clicable para navegar al día
-    div.className = "bg-slate-50 dark:bg-slate-700/50 rounded p-3 flex justify-between items-center border border-slate-100 dark:border-slate-600 cursor-pointer hover:shadow-md";
-    div.innerHTML = `
-        <div class="flex items-center gap-3">
-            <i class="fa-solid fa-circle text-[10px] ${dotColor}"></i>
-            <div>
-                <div class="text-sm font-bold text-slate-700 dark:text-slate-200">${dateCap}</div>
-                <div class="text-xs text-slate-400">TP: +${tp.toFixed(2)}% | SL: -${sl.toFixed(2)}%</div>
-            </div>
-        </div>
-        <div class="font-bold ${netColor}">${sign}${net.toFixed(2)}%</div>
-    `;
-    // Asociar acción click: llevar al usuario al día correspondiente
-    try {
-        const dateKey = localDateKey(dateObj);
-        div.addEventListener('click', (e) => {
-            // Evitar que clicks en botones internos (si los hubiera) desencadenen navegación
-            if (e.target && (e.target.tagName === 'BUTTON' || e.target.closest && e.target.closest('button'))) return;
-            const picker = document.getElementById('datePicker');
-            if (picker) {
-                picker.value = dateKey;
-                try { localStorage.setItem(DATE_STORAGE_KEY, dateKey); } catch (err) { /* ignore */ }
-            }
-            // Cargar datos del día seleccionado pero MANTENER los resúmenes abiertos
-            try { loadData(); } catch (err) { console.warn('Error cargando datos tras click resumen', err); }
-            // Llevar la vista al tope de la página para que el usuario vea el selector y las listas
-            try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch (e) {}
-        });
-    } catch (e) {
-        console.warn('addDailyRow: no se pudo asignar click al row', e);
-    }
-
-    container.appendChild(div);
 }
 
 // Mostrar/ocultar indicador de carga para la sección de resúmenes
@@ -2497,5 +2334,3 @@ window.addEventListener('appinstalled', () => {
     if (installBtn) installBtn.classList.add('hidden');
     try { showToast('¡App instalada en tu dispositivo!', 'success', 3500); } catch (e) {}
 });
-// Inicializar selector de vista de resúmenes inmediatamente
-try { initSummaryView(); } catch (e) { /* ignore */ }

@@ -858,13 +858,6 @@ button:focus-visible {
     border-color: rgba(96, 165, 250, 0.3);
 }
 
-/* Filas internas (días del listado diario) */
-#daily-summary-list > div {
-    transition: transform 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
-}
-#daily-summary-list > div:hover {
-    transform: translateX(2px);
-}
 
 /* ==================== ANIMACIÓN DE ENTRADA DE FILAS TP/SL ==================== */
 @keyframes trade-row-enter {
