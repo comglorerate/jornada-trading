@@ -497,12 +497,13 @@ function renderCapitalDisplays(netForDay = null) {
     const mainEl = document.getElementById('main-profit-display');
     if (mainEl) {
         const net = netForDay === null ? getCurrentNet() : netForDay;
-        const netSign = net > 0 ? '+' : '';
+        const netSign = net > 0 ? '+' : (net < 0 ? '−' : '');
+        const absNet = Math.abs(net);
         const netColor = net > 0
             ? 'text-green-500 dark:text-green-400'
             : (net < 0 ? 'text-red-500 dark:text-red-400' : 'text-slate-400 dark:text-slate-500');
         const arrow = net > 0 ? '▲' : (net < 0 ? '▼' : '·');
-        mainEl.innerHTML = `<span class="${netColor}">${arrow} ${netSign}${net.toFixed(2)}%</span>`;
+        mainEl.innerHTML = `<span class="${netColor}">${arrow} ${netSign}$${absNet.toFixed(2)}</span>`;
     }
 }
 
@@ -778,11 +779,13 @@ function renderMonthHeatmap(year, month, weeks) {
             if (info.net > 0) cls += ' win-' + intensity(Math.abs(info.net));
             else if (info.net < 0) cls += ' loss-' + intensity(Math.abs(info.net));
             const sign = info.net > 0 ? '+' : (info.net < 0 ? '−' : '');
-            const fullPct = `${sign}${Math.abs(info.net).toFixed(2)}%`;
-            // Versión corta para mostrar dentro de la celda (1 decimal, sin %)
-            const compactPct = `${sign}${Math.abs(info.net).toFixed(1)}`;
-            title = `${day}: ${fullPct} (TP +${info.tp.toFixed(2)}% / SL −${info.sl.toFixed(2)}%)`;
-            pctHtml = `<div class="heatmap-cell-pct">${compactPct}</div>`;
+            const absNet = Math.abs(info.net);
+            // Tooltip completo (al hacer hover): formato $X.XX con desglose TP/SL
+            const fullAmount = `${sign}$${absNet.toFixed(2)}`;
+            // Versión compacta dentro de la celda (1 decimal o sin decimales si es entero)
+            const compactAmount = absNet >= 100 ? `${sign}${Math.round(absNet)}` : `${sign}${absNet.toFixed(1)}`;
+            title = `${day}: ${fullAmount} (TP +$${info.tp.toFixed(2)} / SL −$${info.sl.toFixed(2)})`;
+            pctHtml = `<div class="heatmap-cell-pct">${compactAmount}</div>`;
         } else {
             cls += ' is-empty-day';
             title = `${day} – sin trades`;
@@ -1192,14 +1195,14 @@ async function addEntry(type) {
     const asset = (assetInput && assetInput.value || '').trim().toUpperCase();
 
     if (!Number.isFinite(value) || value <= 0) {
-        showToast('Ingresa un porcentaje válido (mayor a 0)', 'error');
+        showToast('Ingresa un monto válido (mayor a 0)', 'error');
         input.focus();
         return;
     }
 
-    // Tope sano: nadie razonable mete >1000% en un solo trade
-    if (value > 1000) {
-        showToast('El porcentaje parece demasiado alto. Verifica el valor.', 'error');
+    // Tope sano: prevenir typos absurdos (ej. añadir un cero de más)
+    if (value > 1000000) {
+        showToast('El monto parece demasiado alto. Verifica el valor.', 'error');
         input.focus();
         return;
     }
@@ -1432,7 +1435,7 @@ function renderList(type, list) {
         row.innerHTML = `
             <div class="flex items-center gap-3">
                 <span id="asset-${type}-${item.id}" class="font-bold text-slate-700 dark:text-slate-200 text-xs bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 rounded">${safeAsset}</span>
-                <span id="value-${type}-${item.id}" data-value="${valueNum}" class="value-span font-bold ${valueColor} text-sm">${sign}${valueNum.toFixed(2)}%</span>
+                <span id="value-${type}-${item.id}" data-value="${valueNum}" class="value-span font-bold ${valueColor} text-sm tabular-nums">${sign}$${valueNum.toFixed(2)}</span>
                 <div id="editor-${type}-${item.id}" class="inline-editor hidden flex items-center gap-2">
                     <input type="text" class="w-20 px-2 py-1 rounded text-sm border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100" placeholder="PAR" />
                     <input type="number" step="0.01" min="0.01" class="w-20 px-2 py-1 rounded text-sm border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100" />
@@ -1465,15 +1468,16 @@ function updateTotals() {
     const slTotal = currentData.sls.reduce((acc, curr) => acc + (Number(curr && curr.value) || 0), 0);
     const net = tpTotal - slTotal;
 
-    bumpIfChanged(document.getElementById('tp-total-display'), tpTotal.toFixed(2) + '%');
-    bumpIfChanged(document.getElementById('sl-total-display'), slTotal.toFixed(2) + '%');
-    bumpIfChanged(document.getElementById('footer-tp'), '+' + tpTotal.toFixed(2) + '%');
-    bumpIfChanged(document.getElementById('footer-sl'), '-' + slTotal.toFixed(2) + '%');
+    bumpIfChanged(document.getElementById('tp-total-display'), '$' + tpTotal.toFixed(2));
+    bumpIfChanged(document.getElementById('sl-total-display'), '$' + slTotal.toFixed(2));
+    bumpIfChanged(document.getElementById('footer-tp'), '+$' + tpTotal.toFixed(2));
+    bumpIfChanged(document.getElementById('footer-sl'), '−$' + slTotal.toFixed(2));
 
     const netEl = document.getElementById('footer-net');
-    const sign = net > 0 ? '+' : '';
+    const sign = net > 0 ? '+' : (net < 0 ? '−' : '');
+    const absNet = Math.abs(net);
     const colorClass = net > 0 ? 'text-green-500 dark:text-green-400' : (net < 0 ? 'text-red-500 dark:text-red-400' : 'text-slate-800 dark:text-slate-200');
-    bumpIfChanged(netEl, sign + net.toFixed(2) + '%');
+    bumpIfChanged(netEl, sign + '$' + absNet.toFixed(2));
     if (netEl) netEl.className = "font-bold text-lg tabular-nums " + colorClass;
 
     renderCapitalDisplays(net);
@@ -1579,7 +1583,7 @@ async function generateSummaries() {
                     const first = new Date(stats.year, stats.month, 1);
                     const monthName = first.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
                     const monthNameCap = monthName.charAt(0).toUpperCase() + monthName.slice(1);
-                    const signM = stats.net > 0 ? '+' : '';
+                    const signM = stats.net > 0 ? '+' : (stats.net < 0 ? '−' : '');
                     const monthNetClass = stats.net > 0 ? 'text-green-500 dark:text-green-400' : (stats.net < 0 ? 'text-red-500 dark:text-red-400' : 'text-slate-800 dark:text-slate-200');
                     const winRate = stats.totalDays > 0 ? ((stats.winDays / stats.totalDays) * 100).toFixed(1) : '0.0';
 
@@ -1593,7 +1597,7 @@ async function generateSummaries() {
                                     <i class="fa-solid fa-chevron-right month-chevron text-slate-400 dark:text-slate-500 transition-transform"></i>
                                     <div class="font-bold text-slate-700 dark:text-slate-200">${monthNameCap}</div>
                                 </div>
-                                <div class="font-bold text-lg ${monthNetClass} tabular-nums">${signM}${stats.net.toFixed(2)}%</div>
+                                <div class="font-bold text-lg ${monthNetClass} tabular-nums">${signM}$${Math.abs(stats.net).toFixed(2)}</div>
                             </div>
                             <div class="grid grid-cols-3 gap-4 text-center mb-3">
                                 <div>
