@@ -41,64 +41,102 @@
     
     <link rel="stylesheet" href="styles.css">
 </head>
-<!-- Modal de registro / login -->
-<div id="auth-modal-overlay" class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 hidden">
-    <div class="auth-modal-card bg-white dark:bg-slate-800 rounded-xl shadow-xl w-full max-w-md p-6 relative">
-    <button id="auth-modal-close" class="absolute top-3 right-3 text-slate-400 hover:text-slate-600">
-      <i class="fa-solid fa-xmark"></i>
-    </button>
-
-    <h2 id="auth-modal-title" class="text-xl font-bold mb-4 text-slate-800 dark:text-slate-100">
-      Crear cuenta
-    </h2>
-
-    <div class="space-y-3 mb-4">
-      <input
-        id="auth-email"
-        type="email"
-        class="w-full px-3 py-2 rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm text-slate-800 dark:text-slate-100"
-        placeholder="Correo electrónico"
-      />
-      <input
-        id="auth-password"
-        type="password"
-        class="w-full px-3 py-2 rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm text-slate-800 dark:text-slate-100"
-        placeholder="Contraseña (mínimo 6 caracteres)"
-      />
-    </div>
-
-    <button
-      id="auth-modal-submit"
-      class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 rounded-lg mb-3"
-    >
-      Registrarme
-    </button>
-
-    <div class="flex items-center gap-2 my-3">
-      <div class="flex-1 h-px bg-slate-200 dark:bg-slate-700"></div>
-      <span class="text-xs text-slate-400">o</span>
-      <div class="flex-1 h-px bg-slate-200 dark:bg-slate-700"></div>
-    </div>
-
-    <button
-      id="auth-google-btn"
-      class="w-full border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-100 font-medium py-2 rounded-lg flex items-center justify-center gap-2 hover:bg-slate-50 dark:hover:bg-slate-700"
-      type="button"
-    >
-      <i class="fa-brands fa-google"></i>
-      <span>Continuar con Google</span>
-    </button>
-
-    <p class="mt-3 text-xs text-slate-400 text-center">
-      <span id="auth-modal-switch-text">¿Ya tienes cuenta?</span>
-      <button id="auth-modal-switch" class="text-blue-500 hover:underline text-xs">
-        Inicia sesión aquí
-      </button>
-    </p>
-  </div>
-</div>
-
 <body class="bg-[#f0f4f8] dark:bg-slate-900 text-slate-800 dark:text-slate-100 pb-20 theme-transition overflow-x-hidden auth-pending">
+
+    <!-- Modal de registro / login -->
+    <div id="auth-modal-overlay" class="fixed inset-0 flex items-center justify-center z-50 hidden">
+        <div class="auth-modal-card bg-white dark:bg-slate-800 rounded-xl shadow-xl w-full max-w-md p-6 relative mx-4">
+            <button id="auth-modal-close" class="absolute top-3 right-3 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200" aria-label="Cerrar">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+
+            <div class="text-center mb-5">
+                <div class="inline-flex items-center justify-center h-12 w-12 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-300 mb-3">
+                    <i id="auth-modal-icon" class="fa-solid fa-user-plus text-lg"></i>
+                </div>
+                <h2 id="auth-modal-title" class="text-xl font-bold text-slate-800 dark:text-slate-100">
+                    Crear cuenta
+                </h2>
+                <p id="auth-modal-subtitle" class="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                    Registra tu cuenta para sincronizar tu jornada de trading.
+                </p>
+            </div>
+
+            <form id="auth-form" novalidate class="space-y-3 mb-3">
+                <div>
+                    <label for="auth-email" class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">Correo electrónico</label>
+                    <div class="relative">
+                        <i class="fa-regular fa-envelope absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>
+                        <input
+                            id="auth-email"
+                            type="email"
+                            autocomplete="email"
+                            required
+                            class="custom-input w-full pl-9 pr-3 py-2 rounded text-sm placeholder-slate-400"
+                            placeholder="tucorreo@ejemplo.com"
+                        />
+                    </div>
+                </div>
+
+                <div>
+                    <label for="auth-password" class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">Contraseña</label>
+                    <div class="relative">
+                        <i class="fa-solid fa-lock absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>
+                        <input
+                            id="auth-password"
+                            type="password"
+                            autocomplete="current-password"
+                            required
+                            minlength="6"
+                            class="custom-input w-full pl-9 pr-10 py-2 rounded text-sm placeholder-slate-400"
+                            placeholder="Mínimo 6 caracteres"
+                        />
+                        <button type="button" id="auth-toggle-password" class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1" aria-label="Mostrar contraseña" tabindex="-1">
+                            <i class="fa-regular fa-eye"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <div id="auth-error" class="hidden text-xs text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-900/40 rounded px-3 py-2"></div>
+
+                <div id="auth-forgot-row" class="text-right">
+                    <button type="button" id="auth-forgot-btn" class="text-xs text-blue-600 dark:text-blue-400 hover:underline">¿Olvidaste tu contraseña?</button>
+                </div>
+
+                <button
+                    type="submit"
+                    id="auth-modal-submit"
+                    class="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed text-white font-semibold py-2 rounded-lg flex items-center justify-center gap-2"
+                >
+                    <span id="auth-modal-submit-spinner" class="hidden h-4 w-4 border-2 border-white/40 border-t-white rounded-full animate-spin"></span>
+                    <span id="auth-modal-submit-text">Registrarme</span>
+                </button>
+            </form>
+
+            <div class="flex items-center gap-2 my-3">
+                <div class="flex-1 h-px bg-slate-200 dark:bg-slate-700"></div>
+                <span class="text-xs text-slate-400">o</span>
+                <div class="flex-1 h-px bg-slate-200 dark:bg-slate-700"></div>
+            </div>
+
+            <button
+                id="auth-google-btn"
+                class="w-full border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-100 font-medium py-2 rounded-lg flex items-center justify-center gap-2 hover:bg-slate-50 dark:hover:bg-slate-700"
+                type="button"
+            >
+                <i class="fa-brands fa-google"></i>
+                <span>Continuar con Google</span>
+            </button>
+
+            <p class="mt-4 text-xs text-slate-500 dark:text-slate-400 text-center">
+                <span id="auth-modal-switch-text">¿Ya tienes cuenta?</span>
+                <button id="auth-modal-switch" type="button" class="text-blue-600 dark:text-blue-400 hover:underline text-xs font-semibold ml-1">
+                    Inicia sesión aquí
+                </button>
+            </p>
+        </div>
+    </div>
+
 
     <div id="auth-blocker" class="hidden fixed inset-0 z-50 bg-white/90 dark:bg-slate-900/90 flex flex-col items-center justify-center gap-3 text-slate-700 dark:text-slate-200" role="status" aria-live="polite">
         <div class="h-14 w-14 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
@@ -106,31 +144,34 @@
     </div>
 
 
-    <!-- BOTÓN MODO OSCURO (Flotante o en Header) -->
-    <div class="absolute top-6 right-6">
+    <!-- BARRA DE CONTROLES (auth + tema) -->
+    <div class="absolute top-4 right-4 sm:top-6 sm:right-6 z-30">
         <div class="flex items-center gap-2">
+            <!-- Pill de estado: visible solo cuando hay sesión iniciada -->
+            <div id="auth-status" class="hidden text-xs text-slate-600 dark:text-slate-300 px-2.5 py-1.5 rounded-full bg-slate-100 dark:bg-slate-700/80 items-center gap-2 max-w-[180px] sm:max-w-none">
+                <span id="auth-sync" class="inline-block w-2 h-2 rounded-full bg-gray-400 flex-shrink-0" title="Estado de sincronización"></span>
+                <span id="auth-text" class="truncate"></span>
+                <span id="auth-uid" class="hidden"></span>
+            </div>
+
+            <!-- CTAs cuando NO hay sesión (desktop) -->
             <div id="header-auth-cta" class="hidden sm:flex items-center gap-2">
                 <button id="auth-cta-register" class="auth-cta auth-cta-secondary" onclick="openAuthModal('register')">Crear cuenta</button>
                 <button id="auth-cta-login" class="auth-cta auth-cta-primary" onclick="openAuthModal('login')">Iniciar sesión</button>
             </div>
 
-            <!-- Theme toggle for desktop (shown on md+) -->
-            <button id="theme-toggle-desktop" onclick="toggleTheme()" class="hidden md:inline-flex bg-white dark:bg-slate-800 text-slate-600 dark:text-yellow-400 p-2 rounded-full shadow-md border border-slate-200 dark:border-slate-700 hover:scale-110 transition ml-3">
+            <!-- Cerrar sesión (desktop) -->
+            <div id="auth-controls" class="hidden md:flex items-center gap-2">
+                <button id="btn-signout" onclick="signOutUser()" class="auth-btn auth-btn-ghost auth-btn-danger hidden">
+                    <i class="fa-solid fa-right-from-bracket"></i>
+                    <span>Cerrar sesión</span>
+                </button>
+            </div>
+
+            <!-- Theme toggle (desktop) -->
+            <button id="theme-toggle-desktop" onclick="toggleTheme()" class="hidden md:inline-flex bg-white dark:bg-slate-800 text-slate-600 dark:text-yellow-400 p-2 rounded-full shadow-md border border-slate-200 dark:border-slate-700 hover:scale-110 transition" aria-label="Alternar tema">
                 <i class="fa-solid fa-moon theme-icon"></i>
             </button>
-
-
-            <!-- Controles para desktop (ocultos en móvil) -->
-            <div id="auth-controls" class="hidden md:flex items-center gap-2 ml-2">
-                
-                <button id="btn-signout" onclick="signOutUser()" class="auth-btn auth-btn-ghost auth-btn-danger hidden">Cerrar sesión</button>
-            </div>
-
-            <div id="auth-status" class="text-xs text-slate-600 dark:text-slate-300 ml-2 px-2 py-1 rounded bg-slate-100 dark:bg-slate-700 flex items-center gap-2">
-                <span id="auth-text">No conectado</span>
-                <span id="auth-uid" class="ml-2 text-[10px] text-slate-400"></span>
-                <span id="auth-sync" class="ml-2 inline-block w-2 h-2 rounded-full bg-gray-400" title="Estado de sincronización"></span>
-            </div>
 
             <!-- Hamburger (solo móvil) - moved to right of auth-status -->
             <button id="mobile-hamburger" onclick="toggleMobileMenu()" class="md:hidden p-2 rounded bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm ml-2">
@@ -152,50 +193,55 @@
         </div>
     </div>
 
-    <header class="max-w-5xl mx-auto px-4 pt-20 sm:pt-24 pb-6 flex flex-col items-center gap-4 text-center">
-        <div>
-            <p class="text-xs uppercase tracking-[0.4em] text-slate-400 dark:text-slate-500 mb-2">Planifica tu jornada</p>
-            <h1 class="text-3xl font-bold text-slate-900 dark:text-slate-100">Jornada de Trading</h1>
-            <p class="text-sm text-slate-500 dark:text-slate-400 mt-2 max-w-xl mx-auto">
-                Registra tus take profits y stop losses, sincroniza tus días y consulta la evolución de tu profit en un solo lugar.
-            </p>
+    <!-- HEADER COMPACTO -->
+    <header class="max-w-5xl mx-auto px-4 pt-16 sm:pt-20 pb-4 flex flex-col items-center gap-3 text-center">
+        <h1 class="hero-title text-2xl sm:text-3xl text-slate-900 dark:text-slate-100">Jornada de Trading</h1>
+        <div id="date-picker-wrapper" class="inline-flex items-center bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-full px-4 py-2 shadow-sm theme-transition" role="button" tabindex="0">
+            <i class="fa-regular fa-calendar text-slate-500 dark:text-slate-400 mr-2"></i>
+            <input type="date" id="datePicker" class="text-sm text-slate-700 dark:text-slate-200 bg-transparent focus:outline-none font-semibold cursor-pointer">
         </div>
     </header>
 
-    <!-- SECCIÓN SUPERIOR: FECHA Y PROFIT -->
-    <div class="text-center pt-2 pb-4 max-w-5xl mx-auto px-4">
-        <div id="date-picker-wrapper" class="inline-flex items-center bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded px-3 py-2 shadow-sm theme-transition" role="button" tabindex="0">
-            <i class="fa-regular fa-calendar text-slate-500 dark:text-slate-400 mr-2"></i>
-            <input type="date" id="datePicker" class="text-sm text-slate-700 dark:text-slate-200 bg-transparent focus:outline-none font-medium cursor-pointer">
-        </div>
-    </div>
-
-    <!-- Capital inicial + acumulado -->
-    <div class="max-w-5xl mx-auto px-4 mb-4">
-        <div class="panel theme-transition p-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div class="w-full md:w-2/3 space-y-2">
-                <label class="text-sm font-semibold text-slate-700 dark:text-slate-200 flex items-center gap-2">
-                    <i class="fa-solid fa-wallet"></i>
+    <!-- TARJETA KPI UNIFICADA: Capital inicial / Capital actual / Profit del día -->
+    <div class="max-w-5xl mx-auto px-4 mb-6">
+        <div class="kpi-card theme-transition">
+            <!-- Capital inicial (editable) -->
+            <div class="kpi-cell">
+                <div class="kpi-label">
+                    <i class="fa-solid fa-wallet text-slate-400"></i>
                     Capital inicial
-                </label>
-                <div class="flex flex-col sm:flex-row sm:items-center gap-2">
-                    <input type="number" step="0.01" min="0.01" id="capital-input" placeholder="Ej: 1000" 
-                        class="custom-input w-full sm:max-w-[220px] px-3 py-2 rounded text-sm text-slate-700 dark:text-slate-200 placeholder-slate-400">
-                    <span class="text-xs text-slate-500 dark:text-slate-400">Se guarda automáticamente</span>
                 </div>
+                <div class="kpi-input-wrap">
+                    <span class="kpi-currency-symbol">$</span>
+                    <input type="number" step="0.01" min="0.01" id="capital-input" placeholder="1000"
+                        class="kpi-input">
+                </div>
+                <div class="kpi-hint">Se guarda automáticamente</div>
             </div>
-            <div class="w-full md:w-1/3 text-right space-y-1">
-                <div class="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Capital acumulado</div>
-                <div id="capital-abs-display" class="text-2xl font-bold text-slate-800 dark:text-slate-100">--</div>
-                <div id="capital-pct-display" class="text-sm font-semibold text-slate-500 dark:text-slate-300">--%</div>
-            </div>
-        </div>
-    </div>
 
-    <div class="max-w-lg mx-auto mb-8 px-4">
-        <div class="panel theme-transition text-center p-6">
-            <div class="text-2xl font-bold transition-colors duration-300" id="main-profit-display">
-                <i class="fa-solid fa-arrow-trend-up mr-2 text-sm"></i> Profit Total: 0.00%
+            <!-- Capital acumulado (lectura) -->
+            <div class="kpi-cell kpi-cell-center">
+                <div class="kpi-label kpi-label-muted">Capital actual</div>
+                <div id="capital-abs-display" class="kpi-value tabular-nums">--</div>
+                <div id="capital-pct-display" class="kpi-hint tabular-nums">&nbsp;</div>
+            </div>
+
+            <!-- Profit del día (lectura) -->
+            <div class="kpi-cell kpi-cell-end">
+                <div class="kpi-label kpi-label-muted">Profit del día</div>
+                <div id="main-profit-display" class="kpi-value tabular-nums">
+                    <span class="text-slate-400">0.00%</span>
+                </div>
+                <div class="kpi-hint">basado en TP − SL</div>
+            </div>
+
+            <!-- Sparkline de evolución del capital (últimos 30 días) -->
+            <div id="capital-sparkline-wrap" class="kpi-sparkline-wrap">
+                <div class="kpi-sparkline-header">
+                    <span class="kpi-sparkline-title">Evolución del capital</span>
+                    <span id="capital-sparkline-meta" class="kpi-sparkline-meta tabular-nums"></span>
+                </div>
+                <div id="capital-sparkline" class="kpi-sparkline" aria-hidden="true"></div>
             </div>
         </div>
     </div>
@@ -210,15 +256,15 @@
                 <h2 class="font-bold text-green-700 dark:text-green-400">Take Profit</h2>
             </div>
             <div class="panel-body">
-                <!-- Inputs: Activo + Porcentaje + Botón -->
-                <div class="flex flex-col sm:flex-row gap-3 mb-6">
-                    <input type="text" id="tp-asset" placeholder="Activo (BTC)" 
-                        class="custom-input w-full sm:w-1/3 px-3 py-2 rounded text-sm text-slate-700 dark:text-slate-200 placeholder-slate-400 uppercase font-bold">
-                    
-                    <input type="number" step="0.01" id="tp-input" placeholder="%" 
-                        class="custom-input w-full sm:w-1/3 px-3 py-2 rounded text-sm text-slate-700 dark:text-slate-200 placeholder-slate-400">
-                    
-                    <button onclick="addEntry('tp')" class="w-full sm:w-1/3 bg-blue-500 hover:bg-blue-600 text-white font-medium rounded text-sm transition">+ Agregar</button>
+                <!-- Inputs: Activo (50%) + Porcentaje (37%) + Botón cuadrado (+) -->
+                <div class="trade-row mb-6">
+                    <input type="text" id="tp-asset" placeholder="Activo (BTC)"
+                        class="custom-input trade-asset px-3 py-2 rounded text-sm placeholder-slate-400 uppercase font-bold" inputmode="text">
+                    <input type="number" step="0.01" min="0.01" id="tp-input" placeholder="%"
+                        class="custom-input trade-pct px-3 py-2 rounded text-sm placeholder-slate-400" inputmode="decimal">
+                    <button onclick="addEntry('tp')" class="trade-add-btn" aria-label="Agregar Take Profit">
+                        <i class="fa-solid fa-plus"></i>
+                    </button>
                 </div>
 
                 <div class="stat-pill border-green-100 dark:border-green-900/30 bg-green-50 dark:bg-green-900/10 mb-6">
@@ -242,15 +288,14 @@
                 <h2 class="font-bold text-red-700 dark:text-red-400">Stop Loss</h2>
             </div>
             <div class="panel-body">
-                <!-- Inputs: Activo + Porcentaje + Botón -->
-                <div class="flex flex-col sm:flex-row gap-3 mb-6">
-                    <input type="text" id="sl-asset" placeholder="Activo (BTC)" 
-                        class="custom-input w-full sm:w-1/3 px-3 py-2 rounded text-sm text-slate-700 dark:text-slate-200 placeholder-slate-400 uppercase font-bold">
-
-                    <input type="number" step="0.01" id="sl-input" placeholder="%" 
-                        class="custom-input w-full sm:w-1/3 px-3 py-2 rounded text-sm text-slate-700 dark:text-slate-200 placeholder-slate-400">
-                    
-                    <button onclick="addEntry('sl')" class="w-full sm:w-1/3 bg-blue-500 hover:bg-blue-600 text-white font-medium rounded text-sm transition">+ Agregar</button>
+                <div class="trade-row mb-6">
+                    <input type="text" id="sl-asset" placeholder="Activo (BTC)"
+                        class="custom-input trade-asset px-3 py-2 rounded text-sm placeholder-slate-400 uppercase font-bold" inputmode="text">
+                    <input type="number" step="0.01" min="0.01" id="sl-input" placeholder="%"
+                        class="custom-input trade-pct px-3 py-2 rounded text-sm placeholder-slate-400" inputmode="decimal">
+                    <button onclick="addEntry('sl')" class="trade-add-btn" aria-label="Agregar Stop Loss">
+                        <i class="fa-solid fa-plus"></i>
+                    </button>
                 </div>
 
                 <div class="stat-pill border-red-100 dark:border-red-900/30 bg-red-50 dark:bg-red-900/10 mb-6">
@@ -302,11 +347,10 @@
     <!-- SECCIÓN DESPLEGABLE: RESÚMENES -->
     <div id="summaries-section" class="hidden max-w-6xl mx-auto px-4 mt-8 space-y-6">
 
-        <!-- Selector Día / Semana / Mes -->
+        <!-- Selector Día / Mes -->
         <div class="flex justify-center">
             <div id="summary-view-toggle" class="inline-flex items-center bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-full p-1 shadow-sm">
                 <button id="summary-view-day" data-view="day" class="px-4 py-1 rounded-full text-sm font-medium bg-blue-600 text-white">Día</button>
-                <button id="summary-view-week" data-view="week" class="px-4 py-1 rounded-full text-sm font-medium text-slate-600 dark:text-slate-200">Semana</button>
                 <button id="summary-view-month" data-view="month" class="px-4 py-1 rounded-full text-sm font-medium text-slate-600 dark:text-slate-200">Mes</button>
             </div>
         </div>
@@ -326,20 +370,8 @@
             </div>
         </div>
 
-        <!-- 2. Resumen Semanal -->
-        <div id="weekly-panel" class="panel theme-transition p-6">
-            <h3 class="font-bold text-slate-800 dark:text-slate-100 mb-4 flex items-center gap-2">
-                <i class="fa-regular fa-calendar-days"></i> Resumen Semanal
-            </h3>
-
-            <!-- Contenedor para las 4 semanas apiladas -->
-            <div id="weekly-summaries" class="space-y-4">
-                <!-- JS insertará hasta 4 tarjetas de semana aquí -->
-            </div>
-
-        </div>
-
-        <!-- Panel separado para resúmenes mensuales (se muestra solo en vista "Mes") -->
+        <!-- Panel de resúmenes mensuales (se muestra solo en vista "Mes")
+             Las tarjetas mensuales son expandibles y muestran las semanas/días tradeados dentro -->
         <div id="monthly-panel" class="panel theme-transition p-6 hidden">
             <h3 class="font-bold text-slate-800 dark:text-slate-100 mb-4 flex items-center gap-2">
                 <i class="fa-solid fa-calendar"></i> Resumen Mensual

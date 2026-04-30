@@ -35,11 +35,30 @@ function toggleTheme() {
         body.classList.remove('auth-pending');
     };
 
+    // Si Firebase ya respondió antes de que se evalúe este script, libera ya
+    if (window._firebase && window._firebase.authReady) {
+        releaseGate();
+        return;
+    }
+
     window.addEventListener('firebase-auth-ready', releaseGate, { once: true });
-    setTimeout(releaseGate, 2500); // Fallback por si el evento no llega a dispararse
+    // Fallback más generoso (8 s): si Firebase no responde, dejamos que el usuario
+    // vea la app aunque sin sesión, en lugar de bloquearlo.
+    setTimeout(releaseGate, 8000);
 })();
 
 // --- LÓGICA DE TRADING ---
+
+// Devuelve la fecha como YYYY-MM-DD en zona LOCAL (evita el bug de toISOString
+// que desplaza un día en zonas UTC+).
+function localDateKey(date) {
+    if (!(date instanceof Date) || isNaN(date)) return '';
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+}
+
 let currentData = { tps: [], sls: [] };
 function normalizeCurrentData() {
     if (!currentData || typeof currentData !== 'object') currentData = { tps: [], sls: [] };
@@ -55,7 +74,7 @@ let __isCalculatingCapital = false;
 const DATE_STORAGE_KEY = 'trading_selected_date';
 
 const datePicker = document.getElementById('datePicker');
-const today = new Date().toISOString().split('T')[0];
+const today = localDateKey(new Date());
 const restoredDate = localStorage.getItem(DATE_STORAGE_KEY);
 const initialDate = restoredDate || today;
 datePicker.value = initialDate;
@@ -476,25 +495,40 @@ function renderCapitalDisplays(netForDay = null) {
     const pct = capitalSnap.relativePct;
     const abs = capitalSnap.capital;
     const pctSign = pct > 0 ? '+' : '';
-    const pctColor = pct > 0 ? 'text-green-500 dark:text-green-400' : (pct < 0 ? 'text-red-500 dark:text-red-400' : 'text-slate-800 dark:text-slate-200');
+    const pctColor = pct > 0
+        ? 'text-green-500 dark:text-green-400'
+        : (pct < 0 ? 'text-red-500 dark:text-red-400' : 'text-slate-500 dark:text-slate-400');
 
     const absEl = document.getElementById('capital-abs-display');
     const pctEl = document.getElementById('capital-pct-display');
-    if (absEl) absEl.innerText = formatCurrency(abs);
-    if (pctEl) pctEl.innerText = '';
+    if (absEl) {
+        const isPositive = pct > 0;
+        const isNegative = pct < 0;
+        absEl.innerText = '$' + formatCurrency(abs);
+        absEl.classList.remove('text-green-500','dark:text-green-400','text-red-500','dark:text-red-400','text-slate-800','dark:text-slate-100');
+        if (isPositive) absEl.classList.add('text-green-500','dark:text-green-400');
+        else if (isNegative) absEl.classList.add('text-red-500','dark:text-red-400');
+        else absEl.classList.add('text-slate-800','dark:text-slate-100');
+    }
+    if (pctEl) {
+        if (pct === 0) {
+            pctEl.innerHTML = '&nbsp;';
+            pctEl.className = 'kpi-hint tabular-nums';
+        } else {
+            pctEl.innerText = `${pctSign}${pct.toFixed(2)}% acumulado`;
+            pctEl.className = `kpi-hint tabular-nums ${pctColor}`;
+        }
+    }
 
     const mainEl = document.getElementById('main-profit-display');
     if (mainEl) {
         const net = netForDay === null ? getCurrentNet() : netForDay;
         const netSign = net > 0 ? '+' : '';
-        const netColor = net > 0 ? 'text-green-500 dark:text-green-400' : (net < 0 ? 'text-red-500 dark:text-red-400' : 'text-slate-600 dark:text-slate-300');
-        const icon = net >= 0 ? 'fa-arrow-trend-up' : 'fa-arrow-trend-down';
-        mainEl.innerHTML = `
-            <div class="text-2xl font-bold flex items-center justify-center gap-2 ${netColor}">
-                <i class="fa-solid ${icon}"></i>
-                Profit Total: ${netSign}${net.toFixed(2)}%
-            </div>
-        `;
+        const netColor = net > 0
+            ? 'text-green-500 dark:text-green-400'
+            : (net < 0 ? 'text-red-500 dark:text-red-400' : 'text-slate-400 dark:text-slate-500');
+        const arrow = net > 0 ? '▲' : (net < 0 ? '▼' : '·');
+        mainEl.innerHTML = `<span class="${netColor}">${arrow} ${netSign}${net.toFixed(2)}%</span>`;
     }
 }
 
@@ -512,19 +546,198 @@ function getCurrentNet() {
     return tpTotal - slTotal;
 }
 
+// Construye serie diaria continua: cada día desde el primer trade hasta hoy,
+// con el capital "arrastrado" en días sin movimiento. Devuelve [{ dateKey, capital, dailyNet }].
+function buildDailyCapitalSeries(initial, journals) {
+    const sorted = Object.keys(journals || {}).sort();
+    if (sorted.length === 0) return [];
+
+    const start = new Date(sorted[0] + 'T00:00:00');
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    // Limitar a "hoy o último día con datos", lo que sea más reciente
+    const lastDataDate = new Date(sorted[sorted.length - 1] + 'T00:00:00');
+    const end = today >= lastDataDate ? today : lastDataDate;
+
+    const series = [];
+    let cum = 0;
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+        const key = localDateKey(d);
+        const data = journals[key];
+        let dailyNet = 0;
+        if (data) {
+            const tp = (data.tps || []).reduce((s, it) => s + (Number(it.value) || 0), 0);
+            const sl = (data.sls || []).reduce((s, it) => s + (Number(it.value) || 0), 0);
+            dailyNet = tp - sl;
+            cum += dailyNet;
+        }
+        series.push({ dateKey: key, capital: initial + cum, dailyNet });
+    }
+    return series;
+}
+
+let __lastJournalsCache = {}; // para re-render del sparkline en resize sin recargar
+
 async function recalcCapitalTimeline() {
     if (__isCalculatingCapital) return;
     __isCalculatingCapital = true;
     try {
         const journals = await fetchAllJournalsMerged();
+        __lastJournalsCache = journals;
         capitalTimeline = computeCapitalTimelineFromJournals(journals);
     } catch (err) {
         console.warn('No se pudo recalcular el capital', err);
     } finally {
         __isCalculatingCapital = false;
         renderCapitalDisplays(getCurrentNet());
+        try { renderCapitalSparkline(); } catch (e) { console.warn('Error renderizando sparkline', e); }
     }
 }
+
+// ==================== SPARKLINE ====================
+function renderCapitalSparkline() {
+    const container = document.getElementById('capital-sparkline');
+    const metaEl = document.getElementById('capital-sparkline-meta');
+    if (!container) return;
+
+    const journals = __lastJournalsCache || {};
+    const initial = capitalConfig.initial || 1000;
+    const fullSeries = buildDailyCapitalSeries(initial, journals);
+
+    // Mostrar últimos 30 puntos como máximo
+    const series = fullSeries.slice(-30);
+
+    if (series.length === 0) {
+        container.innerHTML = '<div class="kpi-sparkline-empty">Aún sin historial</div>';
+        if (metaEl) metaEl.innerText = '';
+        return;
+    }
+
+    // Asegurar punto inicial: si solo hay 1 punto, anteponer el capital base
+    let points = series.slice();
+    if (points.length === 1) {
+        points.unshift({ dateKey: '', capital: initial, dailyNet: 0 });
+    }
+
+    const W = container.clientWidth || 300;
+    const H = 56;
+    const padX = 2, padY = 6;
+    const n = points.length;
+
+    const capitals = points.map(p => p.capital);
+    let min = Math.min(...capitals, initial);
+    let max = Math.max(...capitals, initial);
+    if (max === min) { max = min + 1; } // evitar división por cero
+    const range = max - min;
+
+    const xAt = (i) => padX + (i / (n - 1)) * (W - padX * 2);
+    const yAt = (v) => padY + (1 - (v - min) / range) * (H - padY * 2);
+
+    const linePath = points.map((p, i) =>
+        `${i === 0 ? 'M' : 'L'} ${xAt(i).toFixed(2)} ${yAt(p.capital).toFixed(2)}`
+    ).join(' ');
+    const areaPath = `${linePath} L ${xAt(n - 1).toFixed(2)} ${(H - padY).toFixed(2)} L ${xAt(0).toFixed(2)} ${(H - padY).toFixed(2)} Z`;
+
+    const last = points[points.length - 1].capital;
+    const isUp = last > initial;
+    const isDown = last < initial;
+    const stroke = isUp ? '#22c55e' : (isDown ? '#ef4444' : '#94a3b8');
+    const fillId = isUp ? 'sparkGreen' : (isDown ? 'sparkRed' : 'sparkGray');
+    const fillStop = isUp ? '#22c55e' : (isDown ? '#ef4444' : '#94a3b8');
+
+    // Punto final destacado
+    const lastX = xAt(n - 1);
+    const lastY = yAt(last);
+
+    container.innerHTML = `
+      <svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="${fillId}" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="${fillStop}" stop-opacity="0.32" />
+            <stop offset="100%" stop-color="${fillStop}" stop-opacity="0" />
+          </linearGradient>
+        </defs>
+        <path d="${areaPath}" fill="url(#${fillId})" />
+        <path d="${linePath}" fill="none" stroke="${stroke}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+        <line class="kpi-sparkline-hover-line" id="spark-vline" x1="0" y1="${padY}" x2="0" y2="${H - padY}" />
+        <circle class="kpi-sparkline-dot" id="spark-dot-end" cx="${lastX.toFixed(2)}" cy="${lastY.toFixed(2)}" r="3.5" stroke="${stroke}" />
+        <circle class="kpi-sparkline-dot" id="spark-dot" cx="0" cy="0" r="0" stroke="${stroke}" style="opacity:0" />
+      </svg>
+      <div class="kpi-sparkline-tooltip" id="spark-tooltip">
+        <div class="tt-date"></div>
+        <div class="tt-value"></div>
+      </div>
+    `;
+
+    // Meta: variación absoluta vs capital inicial en la ventana visible
+    if (metaEl) {
+        const startCap = points[0].capital;
+        const delta = last - startCap;
+        const pct = startCap > 0 ? (delta / startCap) * 100 : 0;
+        const sign = delta > 0 ? '+' : (delta < 0 ? '−' : '');
+        const cls = delta > 0 ? 'text-green-500 dark:text-green-400' : (delta < 0 ? 'text-red-500 dark:text-red-400' : '');
+        metaEl.innerHTML = `<span>${n} días · </span><span class="${cls}">${sign}${Math.abs(pct).toFixed(2)}%</span>`;
+    }
+
+    // Hover interactivo: encontrar el punto más cercano según x del mouse
+    const svg = container.querySelector('svg');
+    const tooltip = container.querySelector('#spark-tooltip');
+    const ttDate = tooltip.querySelector('.tt-date');
+    const ttValue = tooltip.querySelector('.tt-value');
+    const vline = container.querySelector('#spark-vline');
+    const dot = container.querySelector('#spark-dot');
+
+    const onMove = (e) => {
+        const rect = svg.getBoundingClientRect();
+        const xPx = e.clientX - rect.left;
+        const xViewbox = (xPx / rect.width) * W;
+        // Buscar el i más cercano
+        let bestI = 0;
+        let bestDist = Infinity;
+        for (let i = 0; i < n; i++) {
+            const d = Math.abs(xAt(i) - xViewbox);
+            if (d < bestDist) { bestDist = d; bestI = i; }
+        }
+        const px = xAt(bestI);
+        const py = yAt(points[bestI].capital);
+        const cssX = (px / W) * rect.width;
+        const cssY = (py / H) * rect.height;
+
+        vline.setAttribute('x1', px.toFixed(2));
+        vline.setAttribute('x2', px.toFixed(2));
+        vline.style.opacity = '1';
+        dot.setAttribute('cx', px.toFixed(2));
+        dot.setAttribute('cy', py.toFixed(2));
+        dot.setAttribute('r', '4');
+        dot.style.opacity = '1';
+
+        const dateLabel = points[bestI].dateKey || 'Inicial';
+        ttDate.innerText = dateLabel;
+        ttValue.innerText = '$' + formatCurrency(points[bestI].capital);
+        tooltip.style.left = cssX + 'px';
+        tooltip.style.top = cssY + 'px';
+        tooltip.classList.add('is-visible');
+    };
+    const onLeave = () => {
+        vline.style.opacity = '0';
+        dot.style.opacity = '0';
+        dot.setAttribute('r', '0');
+        tooltip.classList.remove('is-visible');
+    };
+    svg.addEventListener('mousemove', onMove);
+    svg.addEventListener('mouseleave', onLeave);
+    svg.addEventListener('touchmove', (e) => { if (e.touches[0]) onMove(e.touches[0]); }, { passive: true });
+    svg.addEventListener('touchend', onLeave);
+}
+
+// Re-render del sparkline al redimensionar la ventana (debounced)
+let __sparkResizeTimer = null;
+window.addEventListener('resize', () => {
+    if (__sparkResizeTimer) clearTimeout(__sparkResizeTimer);
+    __sparkResizeTimer = setTimeout(() => {
+        try { renderCapitalSparkline(); } catch (e) {}
+    }, 150);
+});
 
 async function initCapitalFeature() {
     try { await loadCapitalConfig(); } catch (e) { /* ignore */ }
@@ -589,10 +802,23 @@ async function loadDataFirestore() {
         // 1) Leer una vez para inicializar la UI
         const snap = await window.firebaseFirestoreGetDoc(docRef);
         if (snap && snap.exists && snap.exists()) {
-            currentData = snap.data() || { tps: [], sls: [] };
-        } else {
-            currentData = { tps: [], sls: [] };
+            const remote = snap.data() || { tps: [], sls: [] };
+            const remoteHasTrades = (Array.isArray(remote.tps) && remote.tps.length) || (Array.isArray(remote.sls) && remote.sls.length);
+            const localHasTrades = (Array.isArray(currentData.tps) && currentData.tps.length) || (Array.isArray(currentData.sls) && currentData.sls.length);
+
+            // Si remoto tiene trades, tiene preferencia (regla de "fuente de verdad").
+            // Si remoto está vacío pero local tiene datos (ej. el usuario añadió cosas
+            // sin estar logueado), conservamos local y disparamos un saveData()
+            // para subirlo a la nube.
+            if (remoteHasTrades || !localHasTrades) {
+                currentData = remote;
+            } else {
+                // mantener local; programar subida
+                setTimeout(() => { saveData().catch(()=>{}); }, 100);
+            }
         }
+        // Si el doc remoto NO existe, NO sobrescribimos currentData:
+        // así preservamos lo que el usuario haya ingresado local antes de loguearse.
         normalizeCurrentData();
         renderUI();
         scheduleCapitalRecalc();
@@ -859,43 +1085,69 @@ function promptMigrateLocalToFirestore() {
 }
 
 async function addEntry(type) {
+    if (type !== 'tp' && type !== 'sl') return;
+
     // Si el usuario no está autenticado, mostrar advertencia (y respetar preferencia)
     const uid = window._firebase && window._firebase.uid;
     if (!uid) {
         const ok = await showAddWarningIfNeeded();
         if (!ok) return;
     }
+
     const inputId = type === 'tp' ? 'tp-input' : 'sl-input';
-    const assetId = type === 'tp' ? 'tp-asset' : 'sl-asset'; // ID del Activo
+    const assetId = type === 'tp' ? 'tp-asset' : 'sl-asset';
 
     const input = document.getElementById(inputId);
     const assetInput = document.getElementById(assetId);
-    const value = parseFloat(input.value);
-    const asset = assetInput.value.trim().toUpperCase(); // Obtener activo
+    if (!input) return;
 
-    if (!value || value <= 0) {
-        showToast('Ingresa un porcentaje válido', 'error');
+    const raw = (input.value || '').toString().replace(',', '.').trim();
+    const value = parseFloat(raw);
+    const asset = (assetInput && assetInput.value || '').trim().toUpperCase();
+
+    if (!Number.isFinite(value) || value <= 0) {
+        showToast('Ingresa un porcentaje válido (mayor a 0)', 'error');
+        input.focus();
         return;
     }
 
-    const entry = { 
-        id: Date.now(), 
-        value: value, 
-        asset: asset || '---' // Guardar activo o guiones si está vacío
+    // Tope sano: nadie razonable mete >1000% en un solo trade
+    if (value > 1000) {
+        showToast('El porcentaje parece demasiado alto. Verifica el valor.', 'error');
+        input.focus();
+        return;
+    }
+
+    const entry = {
+        id: Date.now() + Math.floor(Math.random() * 1000), // evitar colisión si se añaden 2 en el mismo ms
+        value: Math.round(value * 100) / 100, // normalizar a 2 decimales
+        asset: asset || '---'
     };
 
     if (type === 'tp') currentData.tps.push(entry);
     else currentData.sls.push(entry);
 
     input.value = '';
-    assetInput.value = ''; // Limpiar campo activo
+    if (assetInput) assetInput.value = '';
     saveData();
+    // Devolver foco al campo de activo para encadenar entradas rápido
+    if (assetInput) assetInput.focus();
 }
 
 function deleteEntry(type, id) {
-    if (type === 'tp') currentData.tps = currentData.tps.filter(item => item.id !== id);
-    else currentData.sls = currentData.sls.filter(item => item.id !== id);
-    saveData();
+    // Animar salida si la fila está visible, luego borrar
+    const row = document.querySelector(`[data-entry-id="${id}"][data-entry-type="${type}"]`);
+    const finalize = () => {
+        if (type === 'tp') currentData.tps = currentData.tps.filter(item => item.id !== id);
+        else currentData.sls = currentData.sls.filter(item => item.id !== id);
+        saveData();
+    };
+    if (row) {
+        row.classList.add('is-leaving');
+        setTimeout(finalize, 220);
+    } else {
+        finalize();
+    }
 }
 
 // Inicio de edición inline: muestra input + botones
@@ -1003,7 +1255,6 @@ async function clearAll() {
     scheduleCapitalRecalc();
     // Limpiar los contenedores de resúmenes para que no se muestren datos antiguos
     try {
-        const weeklyContainer = document.getElementById('weekly-summaries'); if (weeklyContainer) weeklyContainer.innerHTML = '';
         const monthlyContainer = document.getElementById('monthly-summaries'); if (monthlyContainer) monthlyContainer.innerHTML = '';
         const dailyContainer = document.getElementById('daily-summary-list'); if (dailyContainer) dailyContainer.innerHTML = '';
         const summariesSection = document.getElementById('summaries-section'); if (summariesSection) summariesSection.classList.add('hidden');
@@ -1059,7 +1310,6 @@ async function clearAll() {
     // Forzar limpieza de cachés y UI
     try { __journalCache.clear(); } catch (e) { /* ignore */ }
     try {
-        const weeklyContainer = document.getElementById('weekly-summaries'); if (weeklyContainer) weeklyContainer.innerHTML = '';
         const monthlyContainer = document.getElementById('monthly-summaries'); if (monthlyContainer) monthlyContainer.innerHTML = '';
         const dailyContainer = document.getElementById('daily-summary-list'); if (dailyContainer) dailyContainer.innerHTML = '';
     } catch (e) { /* ignore */ }
@@ -1088,12 +1338,17 @@ function renderList(type, list) {
     const sign = type === 'tp' ? '+' : '-';
 
     list.forEach(item => {
+        const safeValue = Number(item && item.value);
+        const valueNum = Number.isFinite(safeValue) ? safeValue : 0;
+        const safeAsset = (item && item.asset) ? String(item.asset) : '---';
         const row = document.createElement('div');
-        row.className = "flex justify-between items-center py-2 px-3 rounded hover:bg-slate-50 dark:hover:bg-slate-700/50 border border-transparent hover:border-slate-100 dark:hover:border-slate-600 transition group";
+        row.dataset.entryId = item.id;
+        row.dataset.entryType = type;
+        row.className = "trade-entry-row flex justify-between items-center py-2 px-3 rounded hover:bg-slate-50 dark:hover:bg-slate-700/50 border border-transparent hover:border-slate-100 dark:hover:border-slate-600 transition group";
         row.innerHTML = `
             <div class="flex items-center gap-3">
-                <span id="asset-${type}-${item.id}" class="font-bold text-slate-700 dark:text-slate-200 text-xs bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 rounded">${item.asset}</span>
-                <span id="value-${type}-${item.id}" data-value="${item.value}" class="value-span font-bold ${valueColor} text-sm">${sign}${item.value.toFixed(2)}%</span>
+                <span id="asset-${type}-${item.id}" class="font-bold text-slate-700 dark:text-slate-200 text-xs bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 rounded">${safeAsset}</span>
+                <span id="value-${type}-${item.id}" data-value="${valueNum}" class="value-span font-bold ${valueColor} text-sm">${sign}${valueNum.toFixed(2)}%</span>
                 <div id="editor-${type}-${item.id}" class="inline-editor hidden flex items-center gap-2">
                     <input type="text" class="w-20 px-2 py-1 rounded text-sm border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100" placeholder="PAR" />
                     <input type="number" step="0.01" min="0.01" class="w-20 px-2 py-1 rounded text-sm border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100" />
@@ -1110,24 +1365,32 @@ function renderList(type, list) {
     });
 }
 
+function bumpIfChanged(el, newText) {
+    if (!el) return;
+    if (el.innerText !== newText) {
+        el.innerText = newText;
+        el.classList.remove('total-bump');
+        // Reflow para reiniciar la animación si se dispara dos veces seguidas
+        void el.offsetWidth;
+        el.classList.add('total-bump');
+    }
+}
+
 function updateTotals() {
-    const tpTotal = currentData.tps.reduce((acc, curr) => acc + curr.value, 0);
-    const slTotal = currentData.sls.reduce((acc, curr) => acc + curr.value, 0);
+    const tpTotal = currentData.tps.reduce((acc, curr) => acc + (Number(curr && curr.value) || 0), 0);
+    const slTotal = currentData.sls.reduce((acc, curr) => acc + (Number(curr && curr.value) || 0), 0);
     const net = tpTotal - slTotal;
 
+    bumpIfChanged(document.getElementById('tp-total-display'), tpTotal.toFixed(2) + '%');
+    bumpIfChanged(document.getElementById('sl-total-display'), slTotal.toFixed(2) + '%');
+    bumpIfChanged(document.getElementById('footer-tp'), '+' + tpTotal.toFixed(2) + '%');
+    bumpIfChanged(document.getElementById('footer-sl'), '-' + slTotal.toFixed(2) + '%');
 
-    document.getElementById('tp-total-display').innerText = tpTotal.toFixed(2) + '%';
-    document.getElementById('sl-total-display').innerText = slTotal.toFixed(2) + '%';
-    document.getElementById('footer-tp').innerText = '+' + tpTotal.toFixed(2) + '%';
-    document.getElementById('footer-sl').innerText = '-' + slTotal.toFixed(2) + '%';
-    
     const netEl = document.getElementById('footer-net');
-
-    let sign = net > 0 ? '+' : '';
-    let colorClass = net > 0 ? 'text-green-500 dark:text-green-400' : (net < 0 ? 'text-red-500 dark:text-red-400' : 'text-slate-800 dark:text-slate-200');
-
-    netEl.innerText = sign + net.toFixed(2) + '%';
-    netEl.className = "font-bold text-lg " + colorClass;
+    const sign = net > 0 ? '+' : '';
+    const colorClass = net > 0 ? 'text-green-500 dark:text-green-400' : (net < 0 ? 'text-red-500 dark:text-red-400' : 'text-slate-800 dark:text-slate-200');
+    bumpIfChanged(netEl, sign + net.toFixed(2) + '%');
+    if (netEl) netEl.className = "font-bold text-lg tabular-nums " + colorClass;
 
     renderCapitalDisplays(net);
 }
@@ -1159,174 +1422,19 @@ async function generateSummaries() {
         const baseMonday = new Date(selectedDate);
         baseMonday.setDate(selectedDate.getDate() - dayOfWeek + 1);
 
-        const weeklyContainer = document.getElementById('weekly-summaries');
         const monthlyContainer = document.getElementById('monthly-summaries');
         const dailyContainer = document.getElementById('daily-summary-list');
-        if (!weeklyContainer && !dailyContainer && !monthlyContainer) return;
-        if (weeklyContainer) weeklyContainer.innerHTML = '';
+        if (!dailyContainer && !monthlyContainer) return;
         if (monthlyContainer) monthlyContainer.innerHTML = '';
         if (dailyContainer) dailyContainer.innerHTML = '';
 
-        // Usar helpers superiores: readJournalForDate / readManyJournalForDates
-
-        // Generar tarjetas para todas las semanas que tengan al menos un trade
-        // 1) Recolectar todos los diarios disponibles (localStorage + Firestore)
+        // Recolectar todos los diarios disponibles (localStorage + Firestore)
         let allJournals = {};
         try {
             allJournals = await fetchAllJournalsMerged();
         } catch (e) {
             console.warn('No se pudieron leer todos los diarios para generar resúmenes', e);
             allJournals = {};
-        }
-
-        // 2) Construir conjunto de lunes (inicio de semana) que tengan trades
-        const mondaySet = new Set();
-        Object.keys(allJournals || {}).forEach(dateKey => {
-            const data = allJournals[dateKey];
-            if (!hasTrades(data)) return;
-            const d = new Date(dateKey + 'T00:00:00');
-            const dow = d.getDay() || 7;
-            const monday = new Date(d);
-            monday.setDate(d.getDate() - dow + 1);
-            mondaySet.add(monday.toISOString().split('T')[0]);
-        });
-
-        // 3) Ordenar lunes (más reciente primero)
-        const mondays = Array.from(mondaySet).map(s => new Date(s + 'T00:00:00'));
-        mondays.sort((a, b) => b - a);
-
-        // 4) Iterar cada semana encontrada y renderizar
-        for (let m = 0; m < mondays.length; m++) {
-            const monday = mondays[m];
-            const sunday = new Date(monday);
-            sunday.setDate(monday.getDate() + 6);
-            const options = { day: '2-digit', month: '2-digit' };
-            const rangeText = `${monday.toLocaleDateString('es-ES', options)} - ${sunday.toLocaleDateString('es-ES', options)}/${monday.getFullYear()}`;
-
-            let weeklyNet = 0;
-            let totalDays = 0;
-            let winDays = 0;
-            let lossDays = 0;
-            const dailyRows = [];
-
-            // Iterar los 7 días y usar los diarios ya cargados en allJournals
-            for (let i = 0; i < 7; i++) {
-                const tempDate = new Date(monday);
-                tempDate.setDate(monday.getDate() + i);
-                const key = tempDate.toISOString().split('T')[0];
-                const data = allJournals[key];
-                if (data && hasTrades(data)) {
-                    const dailyTp = (data.tps || []).reduce((s, it) => s + (Number(it.value) || 0), 0);
-                    const dailySl = (data.sls || []).reduce((s, it) => s + (Number(it.value) || 0), 0);
-                    const dailyNet = dailyTp - dailySl;
-                    weeklyNet += dailyNet;
-                    totalDays++;
-                    if (dailyNet > 0) winDays++;
-                    else if (dailyNet < 0) lossDays++;
-                    dailyRows.push({ date: new Date(tempDate), tp: dailyTp, sl: dailySl, net: dailyNet });
-                }
-            }
-
-            // Saltar semanas sin trades (por seguridad)
-            if (totalDays === 0) continue;
-
-            // Crear tarjeta de semana con botón toggle
-            const card = document.createElement('div');
-            card.className = 'sub-surface p-4';
-            const weekNetSign = weeklyNet > 0 ? '+' : '';
-            const weekNetClass = weeklyNet > 0 ? 'text-green-500 dark:text-green-400' : (weeklyNet < 0 ? 'text-red-500 dark:text-red-400' : 'text-slate-800 dark:text-slate-200');
-            const weekId = `week-${monday.toISOString().split('T')[0]}`;
-            const isCurrentWeek = (monday.toISOString().split('T')[0] === baseMonday.toISOString().split('T')[0]);
-            card.innerHTML = `
-                <div class="flex justify-between items-start mb-3">
-                    <div class="flex items-center gap-3">
-                        <div class="font-medium text-slate-600 dark:text-slate-300 text-sm">Semana ${rangeText}</div>
-                        <button type="button" class="toggle-week-btn text-xs px-2 py-1 border rounded text-slate-600 dark:text-slate-200 bg-white dark:bg-slate-700" data-week-id="${weekId}" aria-expanded="false">Ver días</button>
-                    </div>
-                    <div class="font-bold text-lg ${weekNetClass}">${weekNetSign}${weeklyNet.toFixed(2)}%</div>
-                </div>
-                <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
-                    <div>
-                        <div class="text-xs text-slate-500 dark:text-slate-400 mb-1">Total Días</div>
-                        <div class="font-bold text-slate-800 dark:text-slate-200">${totalDays}</div>
-                    </div>
-                    <div>
-                        <div class="text-xs text-green-600 dark:text-green-400 mb-1">Días Ganadores</div>
-                        <div class="font-bold text-green-600 dark:text-green-400">${winDays}</div>
-                    </div>
-                    <div>
-                        <div class="text-xs text-red-500 dark:text-red-400 mb-1">Días Perdedores</div>
-                        <div class="font-bold text-red-500 dark:text-red-400">${lossDays}</div>
-                    </div>
-                    <div>
-                        <div class="text-xs text-blue-500 dark:text-blue-400 mb-1">Tasa de Éxito</div>
-                        <div class="font-bold text-blue-600 dark:text-blue-400">${(totalDays>0?((winDays/totalDays)*100).toFixed(1):'0.0')}%</div>
-                    </div>
-                </div>
-            `;
-
-            if (dailyRows.length > 0) {
-                const daysWrapper = document.createElement('div');
-                daysWrapper.className = 'mt-3 space-y-2 hidden';
-                daysWrapper.id = weekId;
-                dailyRows.forEach(row => {
-                    const dateStr = row.date.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
-                    const dateCap = dateStr.charAt(0).toUpperCase() + dateStr.slice(1);
-                    const netColor = row.net > 0 ? 'text-green-600 dark:text-green-400' : (row.net < 0 ? 'text-red-600 dark:text-red-400' : 'text-slate-600 dark:text-slate-300');
-                    const dotColor = row.net > 0 ? 'text-green-500' : (row.net < 0 ? 'text-red-500' : 'text-gray-300');
-                    const sign = row.net > 0 ? '+' : '';
-
-                    const div = document.createElement('div');
-                    div.className = "bg-slate-50 dark:bg-slate-700/50 rounded p-3 flex justify-between items-center border border-slate-100 dark:border-slate-600 cursor-pointer hover:shadow-md";
-                    div.innerHTML = `
-                        <div class="flex items-center gap-3">
-                            <i class="fa-solid fa-circle text-[10px] ${dotColor}"></i>
-                            <div>
-                                <div class="text-sm font-bold text-slate-700 dark:text-slate-200">${dateCap}</div>
-                                <div class="text-xs text-slate-400">TP: +${row.tp.toFixed(2)}% | SL: -${row.sl.toFixed(2)}%</div>
-                            </div>
-                        </div>
-                        <div class="font-bold ${netColor}">${sign}${row.net.toFixed(2)}%</div>
-                    `;
-
-                    const dateKey = row.date.toISOString().split('T')[0];
-                    div.addEventListener('click', (e) => {
-                        if (e.target && (e.target.tagName === 'BUTTON' || e.target.closest && e.target.closest('button'))) return;
-                        const picker = document.getElementById('datePicker');
-                        if (picker) {
-                            picker.value = dateKey;
-                            try { localStorage.setItem(DATE_STORAGE_KEY, dateKey); } catch (err) {}
-                        }
-                        try { loadData(); } catch (err) { console.warn('Error cargando datos tras click resumen', err); }
-                        const summaries = document.getElementById('summaries-section');
-                        if (summaries) summaries.classList.add('hidden');
-                        const toggleBtn = document.getElementById('btn-toggle-summary');
-                        if (toggleBtn) toggleBtn.innerHTML = '<i class="fa-solid fa-chart-column"></i> Ver Resúmenes';
-                        try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch (e) {}
-                    });
-
-                    daysWrapper.appendChild(div);
-                });
-                card.appendChild(daysWrapper);
-                const toggleBtn = card.querySelector(`button.toggle-week-btn[data-week-id="${weekId}"]`);
-                if (toggleBtn) {
-                    toggleBtn.addEventListener('click', (ev) => {
-                        ev.stopPropagation();
-                        const target = document.getElementById(weekId);
-                        if (!target) return;
-                        const wasHidden = target.classList.toggle('hidden');
-                        toggleBtn.innerText = wasHidden ? 'Ver días' : 'Ocultar días';
-                        toggleBtn.setAttribute('aria-expanded', String(!wasHidden));
-                    });
-                }
-            } else {
-                const empty = document.createElement('div');
-                empty.className = 'text-center text-slate-400 dark:text-slate-500 text-sm py-3';
-                empty.innerText = 'No hay registros esta semana';
-                card.appendChild(empty);
-            }
-
-            weeklyContainer.appendChild(card);
         }
 
         // Rellenar la vista 'Día' solo con los días de la semana actual (baseMonday..baseMonday+6)
@@ -1340,7 +1448,7 @@ async function generateSummaries() {
                     const d = new Date(weekStart);
                     d.setDate(weekStart.getDate() + i);
                     wkDates.push(d);
-                    wkKeys.push(d.toISOString().split('T')[0]);
+                    wkKeys.push(localDateKey(d));
                 }
                 try {
                     // Si previamente cargamos todos los diarios (fetchAllJournalsMerged), reutilizarlos
@@ -1376,75 +1484,207 @@ async function generateSummaries() {
             console.warn('Error rellenando vista Día', e);
         }
 
-        // Generar resumen mensual para el mes seleccionado (mostrar siempre en la vista "Mes")
-
+        // Generar resumen mensual: una tarjeta por cada mes con trades registrados
+        // (clicable; al expandir muestra las semanas tradeadas dentro del mes,
+        //  y cada semana puede a su vez expandirse para ver sus días)
         if (monthlyContainer) {
-            const year = selectedDate.getFullYear();
-            const month = selectedDate.getMonth();
-            const first = new Date(year, month, 1);
-            const last = new Date(year, month + 1, 0);
+            // 1) Agrupar diarios por mes y, dentro de cada mes, por semana (lunes)
+            const monthsMap = {};
+            // estructura:
+            // ymKey -> {
+            //   net, totalDays, winDays, lossDays, year, month,
+            //   weeks: { mondayKey -> { monday, net, totalDays, winDays, lossDays, days: [{date,tp,sl,net,dateKey}] } }
+            // }
+            Object.keys(allJournals || {}).forEach(dateKey => {
+                const data = allJournals[dateKey];
+                if (!hasTrades(data)) return;
+                const tp = (data.tps || []).reduce((s, it) => s + (Number(it.value) || 0), 0);
+                const sl = (data.sls || []).reduce((s, it) => s + (Number(it.value) || 0), 0);
+                const net = tp - sl;
 
-            let monthNet = 0, monthTotalDays = 0, monthWinDays = 0, monthLossDays = 0;
-            // Construir lista de keys para el mes y leer en paralelo
-            const monthKeys = [];
-            for (let d = new Date(first); d <= last; d.setDate(d.getDate() + 1)) {
-                monthKeys.push(new Date(d).toISOString().split('T')[0]);
-            }
-            // Preferir datos ya cargados (allJournals) para evitar lecturas obsoletas
-            let monthMap = {};
-            try {
-                if (allJournals && Object.keys(allJournals).length > 0) {
-                    for (let i = 0; i < monthKeys.length; i++) {
-                        const k = monthKeys[i];
-                        monthMap[k] = allJournals[k] || null;
-                    }
-                } else {
-                    monthMap = await readManyJournalForDates(monthKeys);
+                const d = new Date(dateKey + 'T00:00:00');
+                const ymKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+                // Calcular el lunes (ISO) de la semana de ese día
+                const dow = d.getDay() || 7;
+                const monday = new Date(d);
+                monday.setDate(d.getDate() - dow + 1);
+                const mondayKey = localDateKey(monday);
+
+                if (!monthsMap[ymKey]) {
+                    monthsMap[ymKey] = {
+                        net: 0, totalDays: 0, winDays: 0, lossDays: 0,
+                        year: d.getFullYear(), month: d.getMonth(), weeks: {}
+                    };
                 }
-            } catch (e) {
-                console.warn('Error leyendo mes en batch', e);
-                monthMap = {};
-            }
+                const m = monthsMap[ymKey];
+                m.net += net;
+                m.totalDays++;
+                if (net > 0) m.winDays++;
+                else if (net < 0) m.lossDays++;
 
-            for (let i = 0; i < monthKeys.length; i++) {
-                const data = monthMap[monthKeys[i]];
-                if (data && ((data.tps && data.tps.length > 0) || (data.sls && data.sls.length > 0))) {
-                    const tp = (data.tps || []).reduce((s, it) => s + (Number(it.value) || 0), 0);
-                    const sl = (data.sls || []).reduce((s, it) => s + (Number(it.value) || 0), 0);
-                    const net = tp - sl;
-                    monthNet += net;
-                    monthTotalDays++;
-                    if (net > 0) monthWinDays++; else if (net < 0) monthLossDays++;
+                if (!m.weeks[mondayKey]) {
+                    m.weeks[mondayKey] = {
+                        monday: new Date(monday),
+                        net: 0, totalDays: 0, winDays: 0, lossDays: 0, days: []
+                    };
                 }
+                const wk = m.weeks[mondayKey];
+                wk.net += net;
+                wk.totalDays++;
+                if (net > 0) wk.winDays++;
+                else if (net < 0) wk.lossDays++;
+                wk.days.push({ date: new Date(d), tp, sl, net, dateKey });
+            });
+
+            const monthKeys = Object.keys(monthsMap).sort().reverse();
+
+            if (monthKeys.length === 0) {
+                const empty = document.createElement('div');
+                empty.className = 'muted-card p-4 text-center text-slate-400 dark:text-slate-500 text-sm';
+                empty.innerText = 'Aún no has registrado trades en ningún mes.';
+                monthlyContainer.appendChild(empty);
+            } else {
+                monthKeys.forEach(ymKey => {
+                    const stats = monthsMap[ymKey];
+                    const first = new Date(stats.year, stats.month, 1);
+                    const monthName = first.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
+                    const monthNameCap = monthName.charAt(0).toUpperCase() + monthName.slice(1);
+                    const signM = stats.net > 0 ? '+' : '';
+                    const monthNetClass = stats.net > 0 ? 'text-green-500 dark:text-green-400' : (stats.net < 0 ? 'text-red-500 dark:text-red-400' : 'text-slate-800 dark:text-slate-200');
+                    const winRate = stats.totalDays > 0 ? ((stats.winDays / stats.totalDays) * 100).toFixed(1) : '0.0';
+
+                    const monthId = `month-${ymKey}`;
+                    const monthCard = document.createElement('div');
+                    monthCard.className = 'muted-card p-4 month-card';
+                    monthCard.innerHTML = `
+                        <button type="button" class="month-card-trigger w-full text-left" aria-expanded="false" aria-controls="${monthId}-weeks">
+                            <div class="flex justify-between items-center mb-3">
+                                <div class="flex items-center gap-2">
+                                    <i class="fa-solid fa-chevron-right month-chevron text-slate-400 dark:text-slate-500 transition-transform"></i>
+                                    <div class="font-bold text-slate-700 dark:text-slate-200">${monthNameCap}</div>
+                                </div>
+                                <div class="font-bold text-lg ${monthNetClass} tabular-nums">${signM}${stats.net.toFixed(2)}%</div>
+                            </div>
+                            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
+                                <div>
+                                    <div class="text-xs text-slate-500 dark:text-slate-400 mb-1">Días registrados</div>
+                                    <div class="font-bold text-slate-800 dark:text-slate-200 tabular-nums">${stats.totalDays}</div>
+                                </div>
+                                <div>
+                                    <div class="text-xs text-green-600 dark:text-green-400 mb-1">Días Ganadores</div>
+                                    <div class="font-bold text-green-600 dark:text-green-400 tabular-nums">${stats.winDays}</div>
+                                </div>
+                                <div>
+                                    <div class="text-xs text-red-500 dark:text-red-400 mb-1">Días Perdedores</div>
+                                    <div class="font-bold text-red-500 dark:text-red-400 tabular-nums">${stats.lossDays}</div>
+                                </div>
+                                <div>
+                                    <div class="text-xs text-blue-500 dark:text-blue-400 mb-1">Tasa de Éxito</div>
+                                    <div class="font-bold text-blue-600 dark:text-blue-400 tabular-nums">${winRate}%</div>
+                                </div>
+                            </div>
+                        </button>
+                        <div id="${monthId}-weeks" class="month-weeks hidden mt-4 space-y-3"></div>
+                    `;
+
+                    // Renderizar las semanas del mes (más recientes primero)
+                    const weeksContainer = monthCard.querySelector(`#${monthId}-weeks`);
+                    const weekKeys = Object.keys(stats.weeks).sort().reverse();
+                    weekKeys.forEach(mondayKey => {
+                        const wk = stats.weeks[mondayKey];
+                        const monday = wk.monday;
+                        const sunday = new Date(monday); sunday.setDate(monday.getDate() + 6);
+                        const opt = { day: '2-digit', month: '2-digit' };
+                        const rangeText = `${monday.toLocaleDateString('es-ES', opt)} – ${sunday.toLocaleDateString('es-ES', opt)}`;
+                        const wkSign = wk.net > 0 ? '+' : '';
+                        const wkClass = wk.net > 0 ? 'text-green-500 dark:text-green-400' : (wk.net < 0 ? 'text-red-500 dark:text-red-400' : 'text-slate-800 dark:text-slate-200');
+                        const wkRate = wk.totalDays > 0 ? ((wk.winDays / wk.totalDays) * 100).toFixed(0) : '0';
+                        const weekId = `${monthId}-week-${mondayKey}`;
+
+                        // Ordenar días por fecha
+                        wk.days.sort((a, b) => a.date - b.date);
+
+                        const weekCard = document.createElement('div');
+                        weekCard.className = 'sub-surface p-3 month-week-card';
+                        weekCard.innerHTML = `
+                            <button type="button" class="week-trigger w-full text-left" aria-expanded="false" aria-controls="${weekId}-days">
+                                <div class="flex justify-between items-center">
+                                    <div class="flex items-center gap-2">
+                                        <i class="fa-solid fa-chevron-right week-chevron text-slate-400 dark:text-slate-500 transition-transform text-xs"></i>
+                                        <div class="text-sm font-semibold text-slate-700 dark:text-slate-200">Semana ${rangeText}</div>
+                                        <div class="hidden sm:flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400">
+                                            <span class="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-700 tabular-nums">${wk.totalDays}d</span>
+                                            <span class="px-1.5 py-0.5 rounded bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400 tabular-nums">${wk.winDays}W</span>
+                                            <span class="px-1.5 py-0.5 rounded bg-red-50 dark:bg-red-900/30 text-red-500 dark:text-red-400 tabular-nums">${wk.lossDays}L</span>
+                                        </div>
+                                    </div>
+                                    <div class="font-bold ${wkClass} tabular-nums">${wkSign}${wk.net.toFixed(2)}%</div>
+                                </div>
+                            </button>
+                            <div id="${weekId}-days" class="week-days hidden mt-2 space-y-2"></div>
+                        `;
+
+                        const daysContainer = weekCard.querySelector(`#${weekId}-days`);
+                        wk.days.forEach(row => {
+                            const dateStr = row.date.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
+                            const dateCap = dateStr.charAt(0).toUpperCase() + dateStr.slice(1);
+                            const netColor = row.net > 0 ? 'text-green-600 dark:text-green-400' : (row.net < 0 ? 'text-red-600 dark:text-red-400' : 'text-slate-600 dark:text-slate-300');
+                            const dotColor = row.net > 0 ? 'text-green-500' : (row.net < 0 ? 'text-red-500' : 'text-gray-300');
+                            const sign = row.net > 0 ? '+' : '';
+
+                            const dayDiv = document.createElement('div');
+                            dayDiv.className = 'bg-slate-50 dark:bg-slate-700/50 rounded p-3 flex justify-between items-center border border-slate-100 dark:border-slate-600 cursor-pointer hover:shadow-md';
+                            dayDiv.innerHTML = `
+                                <div class="flex items-center gap-3">
+                                    <i class="fa-solid fa-circle text-[10px] ${dotColor}"></i>
+                                    <div>
+                                        <div class="text-sm font-semibold text-slate-700 dark:text-slate-200">${dateCap}</div>
+                                        <div class="text-xs text-slate-400 tabular-nums">TP: +${row.tp.toFixed(2)}% &nbsp;|&nbsp; SL: −${row.sl.toFixed(2)}%</div>
+                                    </div>
+                                </div>
+                                <div class="font-bold ${netColor} tabular-nums">${sign}${row.net.toFixed(2)}%</div>
+                            `;
+                            // Click día → ir a la fecha en la vista principal (mantiene los resúmenes abiertos)
+                            dayDiv.addEventListener('click', (e) => {
+                                if (e.target.closest('button')) return;
+                                const picker = document.getElementById('datePicker');
+                                if (picker) {
+                                    picker.value = row.dateKey;
+                                    try { localStorage.setItem(DATE_STORAGE_KEY, row.dateKey); } catch (err) {}
+                                }
+                                try { loadData(); } catch (err) {}
+                                try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch (err) {}
+                            });
+                            daysContainer.appendChild(dayDiv);
+                        });
+
+                        // Toggle semana → días
+                        const weekTrigger = weekCard.querySelector('.week-trigger');
+                        const weekChevron = weekCard.querySelector('.week-chevron');
+                        weekTrigger.addEventListener('click', (e) => {
+                            e.stopPropagation();
+                            const expanded = weekTrigger.getAttribute('aria-expanded') === 'true';
+                            weekTrigger.setAttribute('aria-expanded', String(!expanded));
+                            daysContainer.classList.toggle('hidden', expanded);
+                            if (weekChevron) weekChevron.style.transform = expanded ? 'rotate(0deg)' : 'rotate(90deg)';
+                        });
+
+                        weeksContainer.appendChild(weekCard);
+                    });
+
+                    // Toggle mes → semanas
+                    const monthTrigger = monthCard.querySelector('.month-card-trigger');
+                    const monthChevron = monthCard.querySelector('.month-chevron');
+                    monthTrigger.addEventListener('click', () => {
+                        const expanded = monthTrigger.getAttribute('aria-expanded') === 'true';
+                        monthTrigger.setAttribute('aria-expanded', String(!expanded));
+                        weeksContainer.classList.toggle('hidden', expanded);
+                        if (monthChevron) monthChevron.style.transform = expanded ? 'rotate(0deg)' : 'rotate(90deg)';
+                    });
+
+                    monthlyContainer.appendChild(monthCard);
+                });
             }
-
-            const monthCard = document.createElement('div');
-            monthCard.className = 'muted-card p-4';
-            const monthName = first.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
-            const signM = monthNet > 0 ? '+' : '';
-            const monthNetClass = monthNet > 0 ? 'text-green-500 dark:text-green-400' : (monthNet < 0 ? 'text-red-500 dark:text-red-400' : 'text-slate-800 dark:text-slate-200');
-            monthCard.innerHTML = `
-                <div class="flex justify-between items-center mb-3">
-                    <div class="font-bold text-slate-700 dark:text-slate-200">Resumen mensual — ${monthName}</div>
-                    <div class="font-bold ${monthNetClass}">${signM}${monthNet.toFixed(2)}%</div>
-                </div>
-                <div class="grid grid-cols-3 gap-4 text-center">
-                    <div>
-                        <div class="text-xs text-slate-500 dark:text-slate-400 mb-1">Días registrados</div>
-                        <div class="font-bold">${monthTotalDays}</div>
-                    </div>
-                    <div>
-                        <div class="text-xs text-green-600 dark:text-green-400 mb-1">Días Ganadores</div>
-                        <div class="font-bold text-green-600 dark:text-green-400">${monthWinDays}</div>
-                    </div>
-                    <div>
-                        <div class="text-xs text-red-500 dark:text-red-400 mb-1">Días Perdedores</div>
-                        <div class="font-bold text-red-500 dark:text-red-400">${monthLossDays}</div>
-                    </div>
-                </div>
-            `;
-
-            monthlyContainer.appendChild(monthCard);
         }
     } finally {
         try { hideSummariesLoading(); } catch (e) {}
@@ -1452,23 +1692,23 @@ async function generateSummaries() {
     }
 }
 
-// --- VISTAS DE RESUMEN (Día / Semana / Mes) ---
+// --- VISTAS DE RESUMEN (Día / Mes) ---
 function setSummaryView(view) {
     try {
+        // Solo se aceptan 'day' o 'month' (la vista 'week' fue retirada;
+        // las semanas viven dentro del despliegue de cada mes)
+        if (view !== 'day' && view !== 'month') view = 'day';
+
         const dailyPanel = document.getElementById('daily-panel');
-        const weeklyPanel = document.getElementById('weekly-panel');
         const monthlyPanel = document.getElementById('monthly-panel');
 
         if (dailyPanel) dailyPanel.classList.toggle('hidden', view !== 'day');
-        if (weeklyPanel) weeklyPanel.classList.toggle('hidden', view !== 'week');
         if (monthlyPanel) monthlyPanel.classList.toggle('hidden', view !== 'month');
 
         // Actualizar estados de botones
         const dayBtn = document.getElementById('summary-view-day');
-        const weekBtn = document.getElementById('summary-view-week');
         const monthBtn = document.getElementById('summary-view-month');
-        const allBtns = [dayBtn, weekBtn, monthBtn];
-        allBtns.forEach(b => {
+        [dayBtn, monthBtn].forEach(b => {
             if (!b) return;
             b.classList.remove('bg-blue-600','text-white');
             b.classList.add('text-slate-600','dark:text-slate-200');
@@ -1480,6 +1720,13 @@ function setSummaryView(view) {
         }
 
         localStorage.setItem('summary_view', view);
+
+        // Si la sección de resúmenes está visible, asegurar que el contenido
+        // está al día al cambiar de pestaña (genera si no había nada).
+        const section = document.getElementById('summaries-section');
+        if (section && !section.classList.contains('hidden')) {
+            scheduleGenerateSummaries(50);
+        }
     } catch (e) {
         console.warn('setSummaryView error', e);
     }
@@ -1489,9 +1736,8 @@ function initSummaryView() {
     const toggle = document.getElementById('summary-view-toggle');
     if (!toggle) return;
     const dayBtn = document.getElementById('summary-view-day');
-    const weekBtn = document.getElementById('summary-view-week');
     const monthBtn = document.getElementById('summary-view-month');
-    [dayBtn, weekBtn, monthBtn].forEach(b => {
+    [dayBtn, monthBtn].forEach(b => {
         if (!b) return;
         b.addEventListener('click', () => {
             const v = b.dataset && b.dataset.view ? b.dataset.view : (b.id || '').replace('summary-view-','');
@@ -1499,7 +1745,9 @@ function initSummaryView() {
         });
     });
 
-    const saved = localStorage.getItem('summary_view') || 'day';
+    // Migrar preferencia legada 'week' a 'day'
+    let saved = localStorage.getItem('summary_view') || 'day';
+    if (saved === 'week') saved = 'day';
     setSummaryView(saved);
 }
 
@@ -1530,7 +1778,7 @@ function addDailyRow(dateObj, tp, sl, net) {
     `;
     // Asociar acción click: llevar al usuario al día correspondiente
     try {
-        const dateKey = dateObj.toISOString().split('T')[0];
+        const dateKey = localDateKey(dateObj);
         div.addEventListener('click', (e) => {
             // Evitar que clicks en botones internos (si los hubiera) desencadenen navegación
             if (e.target && (e.target.tagName === 'BUTTON' || e.target.closest && e.target.closest('button'))) return;
@@ -1539,12 +1787,8 @@ function addDailyRow(dateObj, tp, sl, net) {
                 picker.value = dateKey;
                 try { localStorage.setItem(DATE_STORAGE_KEY, dateKey); } catch (err) { /* ignore */ }
             }
-            // Cargar datos y ocultar resumen para mostrar la vista principal
+            // Cargar datos del día seleccionado pero MANTENER los resúmenes abiertos
             try { loadData(); } catch (err) { console.warn('Error cargando datos tras click resumen', err); }
-            const summaries = document.getElementById('summaries-section');
-            if (summaries) summaries.classList.add('hidden');
-            const toggleBtn = document.getElementById('btn-toggle-summary');
-            if (toggleBtn) toggleBtn.innerHTML = '<i class="fa-solid fa-chart-column"></i> Ver Resúmenes';
             // Llevar la vista al tope de la página para que el usuario vea el selector y las listas
             try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch (e) {}
         });
@@ -1686,6 +1930,7 @@ function updateAuthUI() {
         if (btnSignout) btnSignout.classList.remove('hidden');
         if (btnSignoutMobile) btnSignoutMobile.classList.remove('hidden');
         status.classList.remove('hidden');
+        status.classList.add('flex');
 
         const user = a.currentUser;
         // Mostrar email si existe, si no mostrar uid abreviado
@@ -1730,8 +1975,10 @@ function updateAuthUI() {
         if (btnSignoutMobile) btnSignoutMobile.classList.add('hidden');
         if (authCtaLoginMobile) authCtaLoginMobile.classList.remove('hidden');
         if (authCtaRegisterMobile) authCtaRegisterMobile.classList.remove('hidden');
-        status.classList.remove('hidden');
-        statusText.innerText = 'No conectado';
+        // Ocultamos la pill de estado cuando no hay sesión (evita ruido visual)
+        status.classList.add('hidden');
+        status.classList.remove('flex');
+        statusText.innerText = '';
         statusUid.innerText = '';
         statusSync.classList.remove('bg-green-400', 'bg-red-400');
         statusSync.classList.add('bg-gray-400');
@@ -1819,99 +2066,291 @@ function watchAuthChanges() {
 }
 let authModalMode = 'register'; // 'register' o 'login'
 
+// Traduce los códigos de error de Firebase Auth al español, con mensajes amigables
+function translateAuthError(err) {
+    if (!err) return 'Error de autenticación.';
+    const code = (err && err.code) || '';
+    const map = {
+        'auth/invalid-email': 'El correo electrónico no es válido.',
+        'auth/user-disabled': 'Esta cuenta ha sido deshabilitada.',
+        'auth/user-not-found': 'No existe una cuenta con ese correo.',
+        'auth/wrong-password': 'La contraseña es incorrecta.',
+        'auth/invalid-credential': 'Correo o contraseña incorrectos.',
+        'auth/invalid-login-credentials': 'Correo o contraseña incorrectos.',
+        'auth/email-already-in-use': 'Ya existe una cuenta con ese correo. Inicia sesión.',
+        'auth/weak-password': 'La contraseña es muy débil (mínimo 6 caracteres).',
+        'auth/missing-password': 'Ingresa tu contraseña.',
+        'auth/missing-email': 'Ingresa tu correo electrónico.',
+        'auth/too-many-requests': 'Demasiados intentos. Espera un momento e inténtalo de nuevo.',
+        'auth/network-request-failed': 'Sin conexión. Revisa tu internet e inténtalo de nuevo.',
+        'auth/popup-closed-by-user': 'Cerraste la ventana antes de iniciar sesión.',
+        'auth/popup-blocked': 'El navegador bloqueó la ventana emergente. Permítela e inténtalo de nuevo.',
+        'auth/cancelled-popup-request': 'Se canceló el inicio de sesión.',
+        'auth/operation-not-allowed': 'Este método de inicio de sesión no está habilitado.',
+        'auth/account-exists-with-different-credential': 'Ya existe una cuenta con este correo usando otro método.',
+    };
+    if (map[code]) return map[code];
+    if (err.message) return err.message.replace(/^Firebase:\s*/i, '');
+    return 'Error de autenticación.';
+}
+
+function isValidEmail(email) {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+function setAuthFormError(message) {
+    const errEl = document.getElementById('auth-error');
+    if (!errEl) return;
+    if (!message) {
+        errEl.classList.add('hidden');
+        errEl.innerText = '';
+    } else {
+        errEl.classList.remove('hidden');
+        errEl.innerText = message;
+    }
+}
+
+function setAuthSubmitLoading(loading) {
+    const submitBtn = document.getElementById('auth-modal-submit');
+    const spinner = document.getElementById('auth-modal-submit-spinner');
+    const textEl = document.getElementById('auth-modal-submit-text');
+    if (!submitBtn) return;
+    submitBtn.disabled = !!loading;
+    if (spinner) spinner.classList.toggle('hidden', !loading);
+    if (textEl) {
+        if (loading) {
+            textEl.dataset.prev = textEl.innerText;
+            textEl.innerText = 'Procesando...';
+        } else if (textEl.dataset.prev) {
+            textEl.innerText = textEl.dataset.prev;
+        }
+    }
+}
+
 function openAuthModal(mode = 'register') {
     authModalMode = mode;
     const overlay = document.getElementById('auth-modal-overlay');
     const title = document.getElementById('auth-modal-title');
-    const submitBtn = document.getElementById('auth-modal-submit');
+    const subtitle = document.getElementById('auth-modal-subtitle');
+    const icon = document.getElementById('auth-modal-icon');
+    const submitText = document.getElementById('auth-modal-submit-text');
     const switchText = document.getElementById('auth-modal-switch-text');
     const switchBtn = document.getElementById('auth-modal-switch');
+    const passInput = document.getElementById('auth-password');
+    const emailInput = document.getElementById('auth-email');
+    const forgotRow = document.getElementById('auth-forgot-row');
 
-    if (!overlay || !title || !submitBtn || !switchText || !switchBtn) return;
+    if (!overlay || !title || !submitText || !switchText || !switchBtn) return;
+
+    setAuthFormError('');
+    setAuthSubmitLoading(false);
 
     if (mode === 'register') {
         title.innerText = 'Crear cuenta';
-        submitBtn.innerText = 'Registrarme';
+        if (subtitle) subtitle.innerText = 'Regístrate para sincronizar tu jornada de trading.';
+        if (icon) { icon.className = 'fa-solid fa-user-plus text-lg'; }
+        submitText.innerText = 'Registrarme';
         switchText.innerText = '¿Ya tienes cuenta?';
         switchBtn.innerText = 'Inicia sesión aquí';
+        if (passInput) passInput.setAttribute('autocomplete', 'new-password');
+        if (forgotRow) forgotRow.classList.add('hidden');
     } else {
         title.innerText = 'Iniciar sesión';
-        submitBtn.innerText = 'Iniciar sesión';
+        if (subtitle) subtitle.innerText = 'Bienvenido de vuelta. Accede a tu cuenta.';
+        if (icon) { icon.className = 'fa-solid fa-right-to-bracket text-lg'; }
+        submitText.innerText = 'Iniciar sesión';
         switchText.innerText = '¿Aún no tienes cuenta?';
         switchBtn.innerText = 'Regístrate aquí';
+        if (passInput) passInput.setAttribute('autocomplete', 'current-password');
+        if (forgotRow) forgotRow.classList.remove('hidden');
     }
 
     overlay.classList.remove('hidden');
+
+    // Foco al primer campo vacío, sin perderse en móvil
+    setTimeout(() => {
+        if (emailInput && !emailInput.value) emailInput.focus();
+        else if (passInput) passInput.focus();
+    }, 60);
 }
 
 function closeAuthModal() {
     const overlay = document.getElementById('auth-modal-overlay');
     if (!overlay) return;
     overlay.classList.add('hidden');
+    setAuthFormError('');
+    setAuthSubmitLoading(false);
+}
+
+async function handleAuthSubmit() {
+    const emailEl = document.getElementById('auth-email');
+    const passEl = document.getElementById('auth-password');
+    const email = (emailEl && emailEl.value || '').trim();
+    const password = (passEl && passEl.value) || '';
+
+    setAuthFormError('');
+
+    if (!email) { setAuthFormError('Ingresa tu correo electrónico.'); emailEl && emailEl.focus(); return; }
+    if (!isValidEmail(email)) { setAuthFormError('El correo no tiene un formato válido.'); emailEl && emailEl.focus(); return; }
+    if (!password) { setAuthFormError('Ingresa tu contraseña.'); passEl && passEl.focus(); return; }
+    if (password.length < 6) { setAuthFormError('La contraseña debe tener al menos 6 caracteres.'); passEl && passEl.focus(); return; }
+
+    setAuthSubmitLoading(true);
+    try {
+        if (authModalMode === 'register') {
+            await window.registerWithEmailPassword(email, password);
+            showToast('¡Cuenta creada! Sesión iniciada.', 'success');
+        } else {
+            await window.loginWithEmailPassword(email, password);
+            showToast('Sesión iniciada correctamente.', 'success');
+        }
+        // Limpia campos sólo en éxito
+        if (emailEl) emailEl.value = '';
+        if (passEl) passEl.value = '';
+        closeAuthModal();
+    } catch (err) {
+        console.error(err);
+        setAuthFormError(translateAuthError(err));
+    } finally {
+        setAuthSubmitLoading(false);
+    }
+}
+
+async function handleForgotPassword() {
+    const emailEl = document.getElementById('auth-email');
+    const email = (emailEl && emailEl.value || '').trim();
+    if (!email || !isValidEmail(email)) {
+        setAuthFormError('Escribe tu correo arriba para enviarte el enlace de recuperación.');
+        emailEl && emailEl.focus();
+        return;
+    }
+    setAuthFormError('');
+    setAuthSubmitLoading(true);
+    try {
+        await window.sendPasswordReset(email);
+        showToast('Te enviamos un correo para restablecer tu contraseña.', 'success', 4500);
+    } catch (err) {
+        console.error(err);
+        setAuthFormError(translateAuthError(err));
+    } finally {
+        setAuthSubmitLoading(false);
+    }
 }
 
 function setupAuthModal() {
     const overlay = document.getElementById('auth-modal-overlay');
     if (!overlay) return;
 
+    const form = document.getElementById('auth-form');
     const closeBtn = document.getElementById('auth-modal-close');
-    const submitBtn = document.getElementById('auth-modal-submit');
     const switchBtn = document.getElementById('auth-modal-switch');
     const googleBtn = document.getElementById('auth-google-btn');
+    const togglePass = document.getElementById('auth-toggle-password');
+    const forgotBtn = document.getElementById('auth-forgot-btn');
+    const emailInput = document.getElementById('auth-email');
+    const passInput = document.getElementById('auth-password');
 
-    // Cerrar
-    closeBtn.addEventListener('click', closeAuthModal);
+    // Cerrar (X o clic fuera)
+    if (closeBtn) closeBtn.addEventListener('click', closeAuthModal);
     overlay.addEventListener('click', (e) => {
         if (e.target === overlay) closeAuthModal();
     });
+    // Cerrar con Escape
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && !overlay.classList.contains('hidden')) {
+            closeAuthModal();
+        }
+    });
 
-    // Cambiar entre modo registro / login
-    switchBtn.addEventListener('click', () => {
+    // Cambiar entre registro / login (limpia errores y password)
+    if (switchBtn) switchBtn.addEventListener('click', () => {
+        if (passInput) passInput.value = '';
+        setAuthFormError('');
         openAuthModal(authModalMode === 'register' ? 'login' : 'register');
     });
 
-    // Submit email/password
-    submitBtn.addEventListener('click', async () => {
-        const email = document.getElementById('auth-email').value.trim();
-        const password = document.getElementById('auth-password').value;
+    // Submit (form: cubre Enter en cualquier input + clic en botón)
+    if (form) form.addEventListener('submit', (e) => {
+        e.preventDefault();
+        handleAuthSubmit();
+    });
 
-        if (!email || !password) {
-            showToast('Completa correo y contraseña', 'error');
-            return;
-        }
-        if (password.length < 6) {
-            showToast('La contraseña debe tener al menos 6 caracteres', 'error');
-            return;
-        }
-
-        try {
-            if (authModalMode === 'register') {
-                await window.registerWithEmailPassword(email, password);
-                showToast('Cuenta creada e iniciada sesión', 'success');
-            } else {
-                await window.loginWithEmailPassword(email, password);
-                showToast('Sesión iniciada', 'success');
+    // Toggle ver/ocultar contraseña
+    if (togglePass && passInput) {
+        togglePass.addEventListener('click', () => {
+            const showing = passInput.getAttribute('type') === 'text';
+            passInput.setAttribute('type', showing ? 'password' : 'text');
+            const icon = togglePass.querySelector('i');
+            if (icon) {
+                icon.classList.toggle('fa-eye', showing);
+                icon.classList.toggle('fa-eye-slash', !showing);
             }
-            closeAuthModal();
-        } catch (err) {
-            console.error(err);
-            const msg = (err && err.message) || 'Error de autenticación';
-            showToast(msg, 'error');
-        }
+            togglePass.setAttribute('aria-label', showing ? 'Mostrar contraseña' : 'Ocultar contraseña');
+        });
+    }
+
+    // Recuperar contraseña
+    if (forgotBtn) forgotBtn.addEventListener('click', handleForgotPassword);
+
+    // Limpiar el error inline al escribir
+    [emailInput, passInput].forEach(el => {
+        if (!el) return;
+        el.addEventListener('input', () => setAuthFormError(''));
     });
 
     // Google dentro del modal
-    googleBtn.addEventListener('click', async () => {
+    if (googleBtn) googleBtn.addEventListener('click', async () => {
+        setAuthFormError('');
+        setAuthSubmitLoading(true);
         try {
             await window.signInWithGoogle();
-            showToast('Sesión iniciada con Google', 'success');
+            showToast('Sesión iniciada con Google.', 'success');
             closeAuthModal();
         } catch (err) {
             console.error(err);
-            showToast('Error al iniciar sesión con Google', 'error');
+            setAuthFormError(translateAuthError(err));
+        } finally {
+            setAuthSubmitLoading(false);
         }
     });
 }
+
+// Atajos de teclado en inputs de TP/SL: Enter envía la entrada
+function setupTradeInputShortcuts() {
+    [
+        { tp: 'tp-asset', val: 'tp-input', type: 'tp' },
+        { tp: 'sl-asset', val: 'sl-input', type: 'sl' }
+    ].forEach(group => {
+        const assetEl = document.getElementById(group.tp);
+        const valEl = document.getElementById(group.val);
+
+        // Enter en cualquiera de los dos campos del par envía
+        [assetEl, valEl].forEach(el => {
+            if (!el) return;
+            el.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    addEntry(group.type);
+                }
+            });
+        });
+
+        // Auto-uppercase del activo mientras escribe
+        if (assetEl) {
+            assetEl.addEventListener('input', () => {
+                const start = assetEl.selectionStart;
+                const end = assetEl.selectionEnd;
+                const upper = assetEl.value.toUpperCase();
+                if (assetEl.value !== upper) {
+                    assetEl.value = upper;
+                    try { assetEl.setSelectionRange(start, end); } catch (e) {}
+                }
+            });
+        }
+    });
+}
+
+setupTradeInputShortcuts();
 
 // Ejecutar al cargar
 setupAuthModal();

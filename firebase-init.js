@@ -10,7 +10,7 @@ import {
   updateDoc,
   onSnapshot
 } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-firestore.js";
-import { getAuth, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut, createUserWithEmailAndPassword, signInWithEmailAndPassword  } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-auth.js";
+import { getAuth, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut, createUserWithEmailAndPassword, signInWithEmailAndPassword, sendPasswordResetEmail, setPersistence, browserLocalPersistence  } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-auth.js";
 
 // CONFIG: reemplaza si necesitas valores distintos (copiado desde Firebase Console)
 const firebaseConfig = {
@@ -25,6 +25,11 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const auth = getAuth(app);
+
+// Persistencia local: mantener la sesión iniciada entre recargas/cierre del navegador
+setPersistence(auth, browserLocalPersistence).catch((err) => {
+  console.warn('No se pudo aplicar persistencia local de Auth:', err);
+});
 
 // Intentar persistencia offline (IndexedDB)
 // Desactivado temporalmente: da problemas con el SDK 12.x en este proyecto
@@ -47,9 +52,17 @@ window.firebaseFirestoreSetDoc = (ref, data, options) => setDoc(ref, data, optio
 window.firebaseFirestoreUpdateDoc = (ref, data) => updateDoc(ref, data);
 window.firebaseFirestoreOnSnapshot = (ref, cb, errCb) => onSnapshot(ref, cb, errCb);
 
+// Marcamos cuándo recibimos el PRIMER estado real de auth (vs eventos posteriores)
+let __firstAuthResolved = false;
 onAuthStateChanged(auth, user => {
   window._firebase.uid = user ? user.uid : null;
-  window.dispatchEvent(new Event('firebase-auth-ready'));
+  if (!__firstAuthResolved) {
+    __firstAuthResolved = true;
+    window._firebase.authReady = true;
+    window.dispatchEvent(new Event('firebase-auth-ready'));
+  }
+  // Evento que SIEMPRE se dispara en cambios (login/logout) — distinto del "ready" inicial
+  window.dispatchEvent(new CustomEvent('firebase-auth-changed', { detail: { uid: user ? user.uid : null } }));
 });
 
 
@@ -110,6 +123,19 @@ window.loginWithEmailPassword = async function(email, password) {
     return cred.user;
   } catch (err) {
     console.error('Error loginWithEmailPassword:', err);
+    throw err;
+  }
+};
+
+// Recuperar contraseña por email
+window.sendPasswordReset = async function(email) {
+  try {
+    const a = window._firebase && window._firebase.auth;
+    if (!a) throw new Error('Auth no inicializado');
+    await sendPasswordResetEmail(a, email);
+    console.log('Email de recuperación enviado a:', email);
+  } catch (err) {
+    console.error('Error sendPasswordReset:', err);
     throw err;
   }
 };
