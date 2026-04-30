@@ -2415,5 +2415,88 @@ setupTradeInputShortcuts();
 setupAuthModal();
 
 watchAuthChanges();
+
+// ==================== PWA: Service Worker + Instalación ====================
+// Registra el Service Worker para soporte offline + instalación.
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js').then((reg) => {
+            // Si hay una versión nueva esperando, activarla.
+            if (reg.waiting) {
+                reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+            }
+            reg.addEventListener('updatefound', () => {
+                const sw = reg.installing;
+                if (!sw) return;
+                sw.addEventListener('statechange', () => {
+                    if (sw.state === 'installed' && navigator.serviceWorker.controller) {
+                        // Hay nueva versión disponible. La activamos en silencio.
+                        sw.postMessage({ type: 'SKIP_WAITING' });
+                    }
+                });
+            });
+        }).catch((err) => {
+            console.warn('Service Worker registration failed:', err);
+        });
+
+        // Cuando el SW activa una nueva versión, la página recarga sola
+        let __reloading = false;
+        navigator.serviceWorker.addEventListener('controllerchange', () => {
+            if (__reloading) return;
+            __reloading = true;
+            // Recarga suave para tomar la nueva versión sin interrumpir al usuario
+            // si está en medio de algo, lo posponemos.
+            setTimeout(() => { try { location.reload(); } catch (e) {} }, 300);
+        });
+    });
+}
+
+// Captura el evento de instalación cuando el navegador detecta que la PWA
+// es instalable (criterios: HTTPS o localhost, manifest válido, SW activo, etc.)
+let __deferredInstallPrompt = null;
+window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    __deferredInstallPrompt = e;
+    const installBtn = document.getElementById('btn-install-pwa');
+    if (installBtn) installBtn.classList.remove('hidden');
+});
+
+// Lanzado por el botón "Instalar app" del menú móvil
+window.triggerInstall = async function triggerInstall() {
+    if (!__deferredInstallPrompt) {
+        // Detectar si ya está instalada o si el navegador no soporta instalación
+        const isStandalone =
+            window.matchMedia('(display-mode: standalone)').matches ||
+            window.navigator.standalone === true;
+        if (isStandalone) {
+            showToast('La app ya está instalada en este dispositivo.', 'info', 3500);
+        } else {
+            // Probable iOS Safari u otro navegador sin beforeinstallprompt
+            showToast('Para instalar: usa "Compartir → Añadir a inicio" en tu navegador.', 'info', 5000);
+        }
+        return;
+    }
+    try {
+        __deferredInstallPrompt.prompt();
+        const { outcome } = await __deferredInstallPrompt.userChoice;
+        if (outcome === 'accepted') {
+            showToast('¡App instalada!', 'success');
+        }
+    } catch (err) {
+        console.warn('Install prompt error:', err);
+    } finally {
+        __deferredInstallPrompt = null;
+        const installBtn = document.getElementById('btn-install-pwa');
+        if (installBtn) installBtn.classList.add('hidden');
+    }
+};
+
+// Cuando se completa la instalación, ocultar el botón
+window.addEventListener('appinstalled', () => {
+    __deferredInstallPrompt = null;
+    const installBtn = document.getElementById('btn-install-pwa');
+    if (installBtn) installBtn.classList.add('hidden');
+    try { showToast('¡App instalada en tu dispositivo!', 'success', 3500); } catch (e) {}
+});
 // Inicializar selector de vista de resúmenes inmediatamente
 try { initSummaryView(); } catch (e) { /* ignore */ }

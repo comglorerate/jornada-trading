@@ -1,0 +1,27 @@
+{
+  "name": "Jornada de Trading",
+  "short_name": "Jornada",
+  "description": "Lleva tu journal de trading: take profits, stop losses, capital y resúmenes diarios y mensuales.",
+  "lang": "es",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#060912",
+  "theme_color": "#0a1020",
+  "categories": ["finance", "productivity", "utilities"],
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}

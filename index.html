@@ -18,8 +18,23 @@
         })();
     </script>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Jornada de Trading</title>
+
+    <!-- PWA -->
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#0a1020" media="(prefers-color-scheme: dark)">
+    <meta name="theme-color" content="#eef2f7" media="(prefers-color-scheme: light)">
+    <meta name="description" content="Lleva tu journal de trading: take profits, stop losses, capital y resúmenes.">
+
+    <!-- iOS -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Jornada">
+    <link rel="apple-touch-icon" href="icon.svg">
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="icon.svg">
     <!-- Tailwind CSS (con soporte Dark Mode) -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
@@ -190,6 +205,11 @@
                 </button>
 
                 <div class="mm-divider"></div>
+
+                <button id="btn-install-pwa" onclick="triggerInstall(); toggleMobileMenu();" class="mm-item mm-item-primary hidden">
+                    <i class="fa-solid fa-mobile-screen mm-icon"></i>
+                    <span>Instalar app</span>
+                </button>
 
                 <button id="theme-toggle-mobile" onclick="toggleTheme(); toggleMobileMenu();" class="mm-item">
                     <i class="fa-solid fa-moon mm-icon theme-icon"></i>
