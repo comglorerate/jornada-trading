@@ -746,6 +746,119 @@ async function initCapitalFeature() {
     scheduleCapitalRecalc(0);
 }
 
+// ==================== HEATMAP MENSUAL ====================
+// Devuelve HTML de un mini-calendario donde cada día tradeado del mes se colorea
+// según signo (verde/rojo) y la intensidad escala con |net| relativa al máximo del mes.
+function renderMonthHeatmap(year, month, weeks) {
+    // Construir mapa dateKey -> netDelDía a partir de las semanas del mes
+    const dayNet = {}; // dateKey -> { net, tp, sl }
+    let maxAbs = 0;
+    Object.values(weeks || {}).forEach(wk => {
+        (wk.days || []).forEach(d => {
+            dayNet[d.dateKey] = { net: d.net, tp: d.tp, sl: d.sl };
+            if (Math.abs(d.net) > maxAbs) maxAbs = Math.abs(d.net);
+        });
+    });
+
+    const first = new Date(year, month, 1);
+    const last = new Date(year, month + 1, 0); // último día del mes
+    const daysInMonth = last.getDate();
+    // Día de la semana del primer día (lunes=1 ... domingo=7)
+    const firstDow = first.getDay() || 7;
+    const todayKey = localDateKey(new Date());
+
+    // Total de celdas (incluye relleno antes del día 1) para llenar grid de 7 columnas
+    const leadingBlanks = firstDow - 1; // 0..6
+    const totalCells = leadingBlanks + daysInMonth;
+    const trailingBlanks = (7 - (totalCells % 7)) % 7;
+
+    const intensity = (absNet) => {
+        if (maxAbs <= 0) return 0;
+        const r = absNet / maxAbs;
+        if (r >= 0.66) return 3;
+        if (r >= 0.33) return 2;
+        return 1;
+    };
+
+    const cells = [];
+    // Headers L M X J V S D (semana ISO)
+    const headers = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
+    let html = `
+      <div class="heatmap" role="group" aria-label="Calendario del mes">
+        <div class="heatmap-header">${headers.map(h => `<span>${h}</span>`).join('')}</div>
+        <div class="heatmap-grid">`;
+
+    for (let i = 0; i < leadingBlanks; i++) {
+        html += `<div class="heatmap-cell is-out" aria-hidden="true"></div>`;
+    }
+    for (let day = 1; day <= daysInMonth; day++) {
+        const d = new Date(year, month, day);
+        const dk = localDateKey(d);
+        const info = dayNet[dk];
+        const isToday = (dk === todayKey);
+        let cls = 'heatmap-cell';
+        let title = '';
+        let pctHtml = '';
+        if (info) {
+            cls += ' has-trade';
+            if (info.net > 0) cls += ' win-' + intensity(Math.abs(info.net));
+            else if (info.net < 0) cls += ' loss-' + intensity(Math.abs(info.net));
+            const sign = info.net > 0 ? '+' : (info.net < 0 ? '−' : '');
+            const fullPct = `${sign}${Math.abs(info.net).toFixed(2)}%`;
+            // Versión corta para mostrar dentro de la celda (1 decimal, sin %)
+            const compactPct = `${sign}${Math.abs(info.net).toFixed(1)}`;
+            title = `${day}: ${fullPct} (TP +${info.tp.toFixed(2)}% / SL −${info.sl.toFixed(2)}%)`;
+            pctHtml = `<div class="heatmap-cell-pct">${compactPct}</div>`;
+        } else {
+            cls += ' is-empty-day';
+            title = `${day} – sin trades`;
+        }
+        if (isToday) cls += ' is-today';
+        html += `<div class="${cls}" data-date-key="${dk}" data-day="${day}" title="${title}">
+            <div class="heatmap-cell-day">${day}</div>
+            ${pctHtml}
+        </div>`;
+    }
+    for (let i = 0; i < trailingBlanks; i++) {
+        html += `<div class="heatmap-cell is-out" aria-hidden="true"></div>`;
+    }
+
+    html += `</div>
+        <div class="heatmap-legend">
+            <span>Pérdida</span>
+            <span class="heatmap-legend-scale">
+                <span class="heatmap-cell loss-3"></span>
+                <span class="heatmap-cell loss-2"></span>
+                <span class="heatmap-cell loss-1"></span>
+                <span class="heatmap-cell"></span>
+                <span class="heatmap-cell win-1"></span>
+                <span class="heatmap-cell win-2"></span>
+                <span class="heatmap-cell win-3"></span>
+            </span>
+            <span>Ganancia</span>
+        </div>
+      </div>`;
+    return html;
+}
+
+// Click en un día del heatmap → navegar a esa fecha (manteniendo resúmenes abiertos)
+function wireHeatmapInteractions(container) {
+    if (!container) return;
+    container.addEventListener('click', (e) => {
+        const cell = e.target.closest('.heatmap-cell.has-trade');
+        if (!cell) return;
+        const dk = cell.dataset.dateKey;
+        if (!dk) return;
+        const picker = document.getElementById('datePicker');
+        if (picker) {
+            picker.value = dk;
+            try { localStorage.setItem(DATE_STORAGE_KEY, dk); } catch (err) {}
+        }
+        try { loadData(); } catch (err) {}
+        try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch (err) {}
+    });
+}
+
 // Debounce para generación de resúmenes: evita llamadas redundantes y chequea visibilidad
 let __generateSummariesTimer = null;
 function scheduleGenerateSummaries(delay = 250) {
@@ -1565,120 +1678,55 @@ async function generateSummaries() {
                                 </div>
                                 <div class="font-bold text-lg ${monthNetClass} tabular-nums">${signM}${stats.net.toFixed(2)}%</div>
                             </div>
-                            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
+                            <div class="grid grid-cols-3 gap-4 text-center mb-3">
                                 <div>
-                                    <div class="text-xs text-slate-500 dark:text-slate-400 mb-1">Días registrados</div>
+                                    <div class="text-xs text-slate-500 dark:text-slate-400 mb-1">Días</div>
                                     <div class="font-bold text-slate-800 dark:text-slate-200 tabular-nums">${stats.totalDays}</div>
                                 </div>
                                 <div>
-                                    <div class="text-xs text-green-600 dark:text-green-400 mb-1">Días Ganadores</div>
+                                    <div class="text-xs text-green-600 dark:text-green-400 mb-1">Ganadores</div>
                                     <div class="font-bold text-green-600 dark:text-green-400 tabular-nums">${stats.winDays}</div>
                                 </div>
                                 <div>
-                                    <div class="text-xs text-red-500 dark:text-red-400 mb-1">Días Perdedores</div>
+                                    <div class="text-xs text-red-500 dark:text-red-400 mb-1">Perdedores</div>
                                     <div class="font-bold text-red-500 dark:text-red-400 tabular-nums">${stats.lossDays}</div>
                                 </div>
-                                <div>
-                                    <div class="text-xs text-blue-500 dark:text-blue-400 mb-1">Tasa de Éxito</div>
-                                    <div class="font-bold text-blue-600 dark:text-blue-400 tabular-nums">${winRate}%</div>
+                            </div>
+                            <div class="px-1">
+                                <div class="flex items-center justify-between text-xs">
+                                    <span class="text-slate-500 dark:text-slate-400 font-semibold uppercase tracking-wide">Tasa de éxito</span>
+                                    <span class="font-bold text-blue-600 dark:text-blue-400 tabular-nums">${winRate}%</span>
+                                </div>
+                                <div class="success-bar ${stats.totalDays === 0 ? 'success-bar-empty' : ''}">
+                                    <div class="success-bar-fill" style="width: ${stats.totalDays > 0 ? winRate : 0}%"></div>
                                 </div>
                             </div>
                         </button>
-                        <div id="${monthId}-weeks" class="month-weeks hidden mt-4 space-y-3"></div>
+                        <div id="${monthId}-expanded" class="month-expanded hidden mt-4">
+                            <div id="${monthId}-heatmap" class="heatmap-container"></div>
+                        </div>
                     `;
 
-                    // Renderizar las semanas del mes (más recientes primero)
-                    const weeksContainer = monthCard.querySelector(`#${monthId}-weeks`);
-                    const weekKeys = Object.keys(stats.weeks).sort().reverse();
-                    weekKeys.forEach(mondayKey => {
-                        const wk = stats.weeks[mondayKey];
-                        const monday = wk.monday;
-                        const sunday = new Date(monday); sunday.setDate(monday.getDate() + 6);
-                        const opt = { day: '2-digit', month: '2-digit' };
-                        const rangeText = `${monday.toLocaleDateString('es-ES', opt)} – ${sunday.toLocaleDateString('es-ES', opt)}`;
-                        const wkSign = wk.net > 0 ? '+' : '';
-                        const wkClass = wk.net > 0 ? 'text-green-500 dark:text-green-400' : (wk.net < 0 ? 'text-red-500 dark:text-red-400' : 'text-slate-800 dark:text-slate-200');
-                        const wkRate = wk.totalDays > 0 ? ((wk.winDays / wk.totalDays) * 100).toFixed(0) : '0';
-                        const weekId = `${monthId}-week-${mondayKey}`;
+                    // Renderizar heatmap del mes
+                    try {
+                        const hmContainer = monthCard.querySelector(`#${monthId}-heatmap`);
+                        if (hmContainer) {
+                            hmContainer.innerHTML = renderMonthHeatmap(stats.year, stats.month, stats.weeks);
+                            wireHeatmapInteractions(hmContainer);
+                        }
+                    } catch (err) {
+                        console.warn('Error renderizando heatmap', err);
+                    }
 
-                        // Ordenar días por fecha
-                        wk.days.sort((a, b) => a.date - b.date);
-
-                        const weekCard = document.createElement('div');
-                        weekCard.className = 'sub-surface p-3 month-week-card';
-                        weekCard.innerHTML = `
-                            <button type="button" class="week-trigger w-full text-left" aria-expanded="false" aria-controls="${weekId}-days">
-                                <div class="flex justify-between items-center">
-                                    <div class="flex items-center gap-2">
-                                        <i class="fa-solid fa-chevron-right week-chevron text-slate-400 dark:text-slate-500 transition-transform text-xs"></i>
-                                        <div class="text-sm font-semibold text-slate-700 dark:text-slate-200">Semana ${rangeText}</div>
-                                        <div class="hidden sm:flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400">
-                                            <span class="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-700 tabular-nums">${wk.totalDays}d</span>
-                                            <span class="px-1.5 py-0.5 rounded bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400 tabular-nums">${wk.winDays}W</span>
-                                            <span class="px-1.5 py-0.5 rounded bg-red-50 dark:bg-red-900/30 text-red-500 dark:text-red-400 tabular-nums">${wk.lossDays}L</span>
-                                        </div>
-                                    </div>
-                                    <div class="font-bold ${wkClass} tabular-nums">${wkSign}${wk.net.toFixed(2)}%</div>
-                                </div>
-                            </button>
-                            <div id="${weekId}-days" class="week-days hidden mt-2 space-y-2"></div>
-                        `;
-
-                        const daysContainer = weekCard.querySelector(`#${weekId}-days`);
-                        wk.days.forEach(row => {
-                            const dateStr = row.date.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
-                            const dateCap = dateStr.charAt(0).toUpperCase() + dateStr.slice(1);
-                            const netColor = row.net > 0 ? 'text-green-600 dark:text-green-400' : (row.net < 0 ? 'text-red-600 dark:text-red-400' : 'text-slate-600 dark:text-slate-300');
-                            const dotColor = row.net > 0 ? 'text-green-500' : (row.net < 0 ? 'text-red-500' : 'text-gray-300');
-                            const sign = row.net > 0 ? '+' : '';
-
-                            const dayDiv = document.createElement('div');
-                            dayDiv.className = 'bg-slate-50 dark:bg-slate-700/50 rounded p-3 flex justify-between items-center border border-slate-100 dark:border-slate-600 cursor-pointer hover:shadow-md';
-                            dayDiv.innerHTML = `
-                                <div class="flex items-center gap-3">
-                                    <i class="fa-solid fa-circle text-[10px] ${dotColor}"></i>
-                                    <div>
-                                        <div class="text-sm font-semibold text-slate-700 dark:text-slate-200">${dateCap}</div>
-                                        <div class="text-xs text-slate-400 tabular-nums">TP: +${row.tp.toFixed(2)}% &nbsp;|&nbsp; SL: −${row.sl.toFixed(2)}%</div>
-                                    </div>
-                                </div>
-                                <div class="font-bold ${netColor} tabular-nums">${sign}${row.net.toFixed(2)}%</div>
-                            `;
-                            // Click día → ir a la fecha en la vista principal (mantiene los resúmenes abiertos)
-                            dayDiv.addEventListener('click', (e) => {
-                                if (e.target.closest('button')) return;
-                                const picker = document.getElementById('datePicker');
-                                if (picker) {
-                                    picker.value = row.dateKey;
-                                    try { localStorage.setItem(DATE_STORAGE_KEY, row.dateKey); } catch (err) {}
-                                }
-                                try { loadData(); } catch (err) {}
-                                try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch (err) {}
-                            });
-                            daysContainer.appendChild(dayDiv);
-                        });
-
-                        // Toggle semana → días
-                        const weekTrigger = weekCard.querySelector('.week-trigger');
-                        const weekChevron = weekCard.querySelector('.week-chevron');
-                        weekTrigger.addEventListener('click', (e) => {
-                            e.stopPropagation();
-                            const expanded = weekTrigger.getAttribute('aria-expanded') === 'true';
-                            weekTrigger.setAttribute('aria-expanded', String(!expanded));
-                            daysContainer.classList.toggle('hidden', expanded);
-                            if (weekChevron) weekChevron.style.transform = expanded ? 'rotate(0deg)' : 'rotate(90deg)';
-                        });
-
-                        weeksContainer.appendChild(weekCard);
-                    });
-
-                    // Toggle mes → semanas
+                    // Toggle mes → expande heatmap
                     const monthTrigger = monthCard.querySelector('.month-card-trigger');
                     const monthChevron = monthCard.querySelector('.month-chevron');
+                    const monthExpanded = monthCard.querySelector(`#${monthId}-expanded`);
+                    monthTrigger.setAttribute('aria-controls', `${monthId}-expanded`);
                     monthTrigger.addEventListener('click', () => {
                         const expanded = monthTrigger.getAttribute('aria-expanded') === 'true';
                         monthTrigger.setAttribute('aria-expanded', String(!expanded));
-                        weeksContainer.classList.toggle('hidden', expanded);
+                        if (monthExpanded) monthExpanded.classList.toggle('hidden', expanded);
                         if (monthChevron) monthChevron.style.transform = expanded ? 'rotate(0deg)' : 'rotate(90deg)';
                     });
 

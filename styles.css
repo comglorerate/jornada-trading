@@ -516,6 +516,261 @@ button:focus-visible {
 
 .muted-card { background: var(--surface-muted); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-soft); }
 
+/* ==================== MENÚ MÓVIL ==================== */
+.mobile-menu {
+    position: absolute;
+    top: 3.25rem;
+    right: 1rem;
+    z-index: 50;
+    min-width: 220px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 0.85rem;
+    padding: 0.4rem;
+    box-shadow: 0 18px 38px rgba(15, 23, 42, 0.18), 0 4px 10px rgba(15, 23, 42, 0.08);
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    animation: mm-pop 0.16s cubic-bezier(0.21, 1.02, 0.42, 1.01);
+    transform-origin: top right;
+}
+.dark .mobile-menu {
+    box-shadow: 0 24px 48px rgba(0, 0, 0, 0.55);
+}
+.mobile-menu.hidden { display: none; }
+
+@keyframes mm-pop {
+    from { opacity: 0; transform: translateY(-6px) scale(0.97); }
+    to   { opacity: 1; transform: translateY(0)    scale(1); }
+}
+
+.mm-item {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.62rem 0.8rem;
+    border: none;
+    border-radius: 0.6rem;
+    background: transparent;
+    color: var(--text);
+    font-size: 0.92rem;
+    font-weight: 600;
+    text-align: left;
+    white-space: nowrap;
+    cursor: pointer;
+    min-height: 0;
+    line-height: 1.2;
+    transition: background-color 0.12s ease, color 0.12s ease, transform 0.08s ease;
+    box-shadow: none;
+}
+.mm-item:hover {
+    background: var(--surface-muted);
+}
+.mm-item:active { transform: scale(0.98); }
+.mm-item:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: -2px;
+    box-shadow: none;
+}
+.mm-icon {
+    width: 18px;
+    text-align: center;
+    color: var(--muted-2);
+    font-size: 0.95rem;
+    flex-shrink: 0;
+}
+
+/* Variante primaria (Iniciar sesión) */
+.mm-item-primary {
+    background: var(--primary);
+    color: #ffffff;
+}
+.mm-item-primary .mm-icon { color: rgba(255, 255, 255, 0.9); }
+.mm-item-primary:hover {
+    background: var(--primary-strong);
+    color: #ffffff;
+}
+
+/* Variante peligro (Cerrar sesión) */
+.mm-item-danger { color: var(--danger); }
+.mm-item-danger .mm-icon { color: var(--danger); }
+.mm-item-danger:hover { background: rgba(220, 38, 38, 0.1); }
+.dark .mm-item-danger:hover { background: rgba(248, 113, 113, 0.15); }
+
+/* Divider */
+.mm-divider {
+    height: 1px;
+    background: var(--border);
+    margin: 0.35rem 0.25rem;
+}
+
+/* ==================== BARRA DE TASA DE ÉXITO ==================== */
+.success-bar {
+    width: 100%;
+    height: 6px;
+    border-radius: 999px;
+    background: linear-gradient(90deg, rgba(239, 68, 68, 0.18), rgba(239, 68, 68, 0.28));
+    overflow: hidden;
+    position: relative;
+    margin-top: 0.35rem;
+}
+.dark .success-bar {
+    background: linear-gradient(90deg, rgba(248, 113, 113, 0.18), rgba(248, 113, 113, 0.28));
+}
+.success-bar-fill {
+    position: absolute;
+    inset: 0 auto 0 0;
+    background: linear-gradient(90deg, #16a34a, #22c55e);
+    border-radius: 999px;
+    transition: width 0.35s cubic-bezier(0.21, 1.02, 0.42, 1.01);
+}
+.dark .success-bar-fill {
+    background: linear-gradient(90deg, #22c55e, #4ade80);
+}
+.success-bar-empty .success-bar-fill { background: #94a3b8; }
+
+/* ==================== CALENDARIO HEATMAP ==================== */
+.heatmap {
+    margin-top: 0.85rem;
+    padding: 1.25rem;
+    background: var(--surface-muted);
+    border: 1px solid var(--border);
+    border-radius: 0.75rem;
+    width: 100%;
+}
+@media (max-width: 480px) {
+    .heatmap { padding: 0.7rem; }
+}
+.heatmap-header {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 8px;
+    margin-bottom: 10px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    color: var(--muted-2);
+    text-transform: uppercase;
+    text-align: center;
+}
+.heatmap-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 8px;
+}
+@media (max-width: 480px) {
+    .heatmap-header, .heatmap-grid { gap: 5px; }
+    .heatmap-header { font-size: 0.62rem; }
+}
+.heatmap-cell {
+    /* Cuadrado en móvil, rectangular más bajo en escritorio para evitar scroll */
+    aspect-ratio: 1;
+    border-radius: 6px;
+    background: rgba(148, 163, 184, 0.10);
+    border: 1px solid transparent;
+    position: relative;
+    transition: transform 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
+    cursor: default;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    align-items: stretch;
+    padding: 5px 6px;
+    min-width: 0;
+    min-height: 48px;
+    max-height: 78px;
+}
+@media (min-width: 768px) {
+    .heatmap-cell {
+        /* En escritorio aspect-ratio se "rompe" a favor del max-height para que
+           toda la tarjeta del mes quepa sin scroll */
+        aspect-ratio: auto;
+        height: 72px;
+    }
+}
+.dark .heatmap-cell { background: rgba(148, 163, 184, 0.06); }
+.heatmap-cell.is-out { background: transparent; border: none; }
+
+/* Texto interno: día (arriba-izq) + porcentaje (abajo-centro) */
+.heatmap-cell-day {
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: var(--muted-2);
+    line-height: 1;
+    text-align: left;
+    font-variant-numeric: tabular-nums;
+}
+.heatmap-cell-pct {
+    font-size: 0.78rem;
+    font-weight: 800;
+    line-height: 1;
+    text-align: center;
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+    margin-bottom: 2px;
+    white-space: nowrap;
+    overflow: visible;
+}
+@media (max-width: 480px) {
+    .heatmap-cell-day { font-size: 0.62rem; }
+    .heatmap-cell-pct { font-size: 0.62rem; }
+}
+
+/* Tonalidad por intensidad — sube el contraste para que el texto se lea bien */
+.heatmap-cell.win-1 { background: rgba(34, 197, 94, 0.30); }
+.heatmap-cell.win-2 { background: rgba(34, 197, 94, 0.55); }
+.heatmap-cell.win-3 { background: rgba(34, 197, 94, 0.85); }
+.heatmap-cell.loss-1 { background: rgba(239, 68, 68, 0.30); }
+.heatmap-cell.loss-2 { background: rgba(239, 68, 68, 0.55); }
+.heatmap-cell.loss-3 { background: rgba(239, 68, 68, 0.85); }
+
+/* En celdas con trade el día se ve más brillante */
+.heatmap-cell.has-trade .heatmap-cell-day { color: rgba(255,255,255,0.85); }
+.heatmap-cell.win-1 .heatmap-cell-day, .heatmap-cell.loss-1 .heatmap-cell-day {
+    color: var(--text);
+}
+.heatmap-cell.win-3 .heatmap-cell-pct, .heatmap-cell.loss-3 .heatmap-cell-pct { color: #fff; }
+.heatmap-cell.win-2 .heatmap-cell-pct, .heatmap-cell.loss-2 .heatmap-cell-pct { color: #fff; }
+
+.heatmap-cell.has-trade { cursor: pointer; }
+.heatmap-cell.has-trade:hover {
+    transform: scale(1.06);
+    border-color: var(--primary);
+    z-index: 2;
+    box-shadow: 0 6px 14px rgba(15, 23, 42, 0.18);
+}
+.heatmap-cell.is-today {
+    box-shadow: 0 0 0 2px var(--primary);
+}
+.heatmap-cell.is-today:hover { box-shadow: 0 0 0 2px var(--primary), 0 6px 14px rgba(15, 23, 42, 0.18); }
+
+/* Leyenda compacta */
+.heatmap-legend {
+    margin-top: 0.6rem;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.4rem;
+    font-size: 0.65rem;
+    color: var(--muted-2);
+}
+.heatmap-legend-scale {
+    display: inline-flex;
+    gap: 3px;
+}
+.heatmap-legend-scale .heatmap-cell {
+    width: 12px;
+    height: 12px;
+    min-height: 0;
+    max-height: none;
+    aspect-ratio: auto;
+    cursor: default;
+    padding: 0;
+    display: block;
+}
+
 /* ==================== TARJETAS DE MES EXPANDIBLES ==================== */
 .month-card-trigger,
 .week-trigger {

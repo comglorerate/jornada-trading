@@ -173,22 +173,33 @@
                 <i class="fa-solid fa-moon theme-icon"></i>
             </button>
 
-            <!-- Hamburger (solo móvil) - moved to right of auth-status -->
-            <button id="mobile-hamburger" onclick="toggleMobileMenu()" class="md:hidden p-2 rounded bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm ml-2">
+            <!-- Hamburger (solo móvil) -->
+            <button id="mobile-hamburger" onclick="toggleMobileMenu()" class="md:hidden p-2 rounded bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm ml-2" aria-label="Abrir menú">
                 <i class="fa-solid fa-bars"></i>
             </button>
 
             <!-- Menú móvil desplegable (solo visible en móviles) -->
-            <div id="mobile-menu" class="md:hidden hidden absolute top-16 right-4 z-50 bg-white dark:bg-slate-800 p-3 rounded-lg shadow-lg">
-                <div class="flex flex-col gap-2">
-                    <!-- Mobile auth CTAs (shown when NOT signed in) -->
-                    <button id="auth-cta-register-mobile" onclick="openAuthModal('register'); toggleMobileMenu();" class="auth-btn auth-btn-outline">Crear cuenta</button>
-                    <button id="auth-cta-login-mobile" onclick="openAuthModal('login'); toggleMobileMenu();" class="auth-btn auth-btn-primary">Iniciar sesión</button>
+            <div id="mobile-menu" class="mobile-menu md:hidden hidden">
+                <button id="auth-cta-register-mobile" onclick="openAuthModal('register'); toggleMobileMenu();" class="mm-item">
+                    <i class="fa-solid fa-user-plus mm-icon"></i>
+                    <span>Crear cuenta</span>
+                </button>
+                <button id="auth-cta-login-mobile" onclick="openAuthModal('login'); toggleMobileMenu();" class="mm-item mm-item-primary">
+                    <i class="fa-solid fa-right-to-bracket mm-icon"></i>
+                    <span>Iniciar sesión</span>
+                </button>
 
-                    <button id="theme-toggle-mobile" onclick="toggleTheme(); toggleMobileMenu();" class="auth-btn auth-btn-outline flex items-center gap-2"> <i class="fa-solid fa-moon theme-icon"></i> <span>Tema</span> </button>
-                    
-                    <button id="btn-signout-mobile" onclick="signOutUser(); toggleMobileMenu();" class="auth-btn auth-btn-ghost auth-btn-danger hidden">Cerrar sesión</button>
-                </div>
+                <div class="mm-divider"></div>
+
+                <button id="theme-toggle-mobile" onclick="toggleTheme(); toggleMobileMenu();" class="mm-item">
+                    <i class="fa-solid fa-moon mm-icon theme-icon"></i>
+                    <span>Cambiar tema</span>
+                </button>
+
+                <button id="btn-signout-mobile" onclick="signOutUser(); toggleMobileMenu();" class="mm-item mm-item-danger hidden">
+                    <i class="fa-solid fa-right-from-bracket mm-icon"></i>
+                    <span>Cerrar sesión</span>
+                </button>
             </div>
         </div>
     </div>
