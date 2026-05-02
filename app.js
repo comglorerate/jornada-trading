@@ -1325,7 +1325,17 @@ async function addEntry(type) {
 
     // Detalles opcionales del panel expandible
     const details = readAddDetailsPanel(type);
-    if (details) entry.details = details;
+    if (details) {
+        // Validación de coherencia LONG/SHORT vs entry/SL/targets
+        const errs = validateTradePrices(details.side, details.entry, details.sl, details.targets);
+        if (Object.keys(errs).length) {
+            const panel = document.getElementById(`${type}-details-panel`);
+            const firstMsg = applyValidationErrors(panel, errs, { slSelector: `#${type}-sl-price` });
+            showToast(firstMsg, 'error', 5000);
+            return;
+        }
+        entry.details = details;
+    }
 
     if (type === 'tp') currentData.tps.push(entry);
     else currentData.sls.push(entry);
@@ -1615,6 +1625,15 @@ function saveEdit(type, id) {
         .map(el => Number(el.value))
         .filter(v => Number.isFinite(v) && v > 0);
 
+    // Validación de coherencia LONG/SHORT vs entry/SL/targets antes de
+    // construir los detalles definitivos.
+    const validationErrs = validateTradePrices(get('side'), get('entry'), get('sl'), targets);
+    if (Object.keys(validationErrs).length) {
+        const firstMsg = applyValidationErrors(editor, validationErrs);
+        showToast(firstMsg, 'error', 5000);
+        return;
+    }
+
     const det = sanitizeDetails({
         side: get('side'),
         leverage: get('leverage'),
@@ -1892,6 +1911,64 @@ function formatPrice(n) {
     if (!Number.isFinite(num)) return '—';
     // Hasta 8 decimales para criptos pequeñas, sin ceros innecesarios.
     return num.toLocaleString('es-PE', { maximumFractionDigits: 8 });
+}
+
+// Valida la coherencia de precios según la dirección del trade (LONG/SHORT).
+// Devuelve un objeto { sl?, t1?, t2?, ... } con mensajes de error por campo.
+// Si no hay side/entry, no podemos validar — devolvemos {} (sin errores).
+function validateTradePrices(side, entry, sl, targets) {
+    const errors = {};
+    const entryNum = Number(entry);
+    if (!side || !Number.isFinite(entryNum) || entryNum <= 0) return errors;
+    const isLong = side === 'LONG';
+
+    const slNum = Number(sl);
+    if (Number.isFinite(slNum) && slNum > 0) {
+        if (isLong && slNum >= entryNum) {
+            errors.sl = `En LONG el Stop Loss debe estar por debajo del precio de entrada (${entryNum})`;
+        } else if (!isLong && slNum <= entryNum) {
+            errors.sl = `En SHORT el Stop Loss debe estar por encima del precio de entrada (${entryNum})`;
+        }
+    }
+
+    if (Array.isArray(targets)) {
+        targets.forEach((t, i) => {
+            const tNum = Number(t);
+            if (!Number.isFinite(tNum) || tNum <= 0) return;
+            if (isLong && tNum <= entryNum) {
+                errors['t' + (i + 1)] = `En LONG el Target ${i + 1} debe estar por encima del precio de entrada (${entryNum})`;
+            } else if (!isLong && tNum >= entryNum) {
+                errors['t' + (i + 1)] = `En SHORT el Target ${i + 1} debe estar por debajo del precio de entrada (${entryNum})`;
+            }
+        });
+    }
+
+    return errors;
+}
+
+// Marca con `.is-invalid` los inputs correspondientes a los errores. Devuelve
+// el primer mensaje (para mostrar en el toast).
+// `container` puede ser el panel de alta o el editor inline de una fila.
+function applyValidationErrors(container, errors, opts) {
+    if (!container) return null;
+    container.querySelectorAll('.is-invalid').forEach(el => el.classList.remove('is-invalid'));
+    if (!errors || !Object.keys(errors).length) return null;
+
+    const slSelector = (opts && opts.slSelector) || '[data-field="sl"]';
+    if (errors.sl) {
+        const el = container.querySelector(slSelector);
+        if (el) el.classList.add('is-invalid');
+    }
+
+    const targetInputs = container.querySelectorAll('.target-input');
+    Object.keys(errors).forEach(k => {
+        const m = k.match(/^t(\d+)$/);
+        if (!m) return;
+        const idx = parseInt(m[1], 10) - 1;
+        if (targetInputs[idx]) targetInputs[idx].classList.add('is-invalid');
+    });
+
+    return Object.values(errors)[0];
 }
 
 function escapeHTML(s) {
@@ -2847,4 +2924,17 @@ window.addEventListener('appinstalled', () => {
     const installBtn = document.getElementById('btn-install-pwa');
     if (installBtn) installBtn.classList.add('hidden');
     try { showToast('¡App instalada en tu dispositivo!', 'success', 3500); } catch (e) {}
+});
+// Limpiar el estado inválido (borde rojo) en cuanto el usuario empieza a corregir.
+document.addEventListener('input', (e) => {
+    const t = e.target;
+    if (t && t.classList && t.classList.contains('is-invalid')) {
+        t.classList.remove('is-invalid');
+    }
+});
+document.addEventListener('change', (e) => {
+    const t = e.target;
+    if (t && t.classList && t.classList.contains('is-invalid')) {
+        t.classList.remove('is-invalid');
+    }
 });
