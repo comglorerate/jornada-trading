@@ -2262,6 +2262,56 @@ setupAuthModal();
 
 watchAuthChanges();
 
+// ==================== Re-sincronización al volver al primer plano ====================
+// En móvil (sobre todo iOS) el SO suspende el runtime de JS cuando la PWA está en
+// background o la pantalla está bloqueada. El websocket de Firestore se cae y el
+// listener onSnapshot deja de recibir cambios hasta que reconecta. Para que el
+// usuario no tenga que refrescar a mano, forzamos un fetch + re-listener cada vez
+// que la app vuelve a estar visible o la red vuelve.
+let __lastForegroundSync = 0;
+async function resyncFromFirestore(reason) {
+    // Anti-rebote: si dos eventos disparan a la vez (ej. visibilitychange + focus),
+    // no hacemos dos lecturas seguidas.
+    const now = Date.now();
+    if (now - __lastForegroundSync < 500) return;
+    __lastForegroundSync = now;
+
+    if (!navigator.onLine) return;
+    const uid = window._firebase && window._firebase.uid;
+    if (!uid) return;
+
+    try {
+        // Re-asegurar el listener global de la colección por si fue cancelado.
+        ensureJournalCollectionListener();
+        // Forzar lectura del documento de la fecha actual (re-crea el listener
+        // por-fecha también, ver loadDataFirestore).
+        await loadDataFirestore();
+        // Refrescar resúmenes y capital por si cambió algo en otros días.
+        try { scheduleGenerateSummaries(50); } catch (e) { /* ignore */ }
+        try { scheduleCapitalRecalc(0); } catch (e) { /* ignore */ }
+    } catch (err) {
+        console.warn('resyncFromFirestore (' + reason + ') falló:', err);
+    }
+}
+
+// 1) visibilitychange — cubre el caso "el usuario vuelve a la PWA tras tenerla en background".
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') resyncFromFirestore('visibilitychange');
+});
+
+// 2) focus — cubre desktop (cambio de pestaña) y algunos webviews donde
+//    visibilitychange no dispara fiable.
+window.addEventListener('focus', () => resyncFromFirestore('focus'));
+
+// 3) pageshow — cubre back/forward cache (el navegador "resucita" la página
+//    sin recargar el JS). En iOS Safari es muy común.
+window.addEventListener('pageshow', (e) => {
+    if (e.persisted) resyncFromFirestore('pageshow-bfcache');
+});
+
+// 4) online — si el dispositivo recupera red tras estar offline.
+window.addEventListener('online', () => resyncFromFirestore('online'));
+
 // ==================== PWA: Service Worker + Instalación ====================
 // Registra el Service Worker para soporte offline + instalación.
 if ('serviceWorker' in navigator) {
