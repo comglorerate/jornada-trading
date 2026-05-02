@@ -69,7 +69,7 @@ function normalizeCurrentData() {
 const CAPITAL_STORAGE_KEY = 'trading_capital_config';
 const DISPLAY_PREF_KEY = 'trading_display_pref';
 let capitalConfig = { initial: 1000 };
-let capitalTimeline = []; // [{ dateKey, factor, capital, relativePct }]
+let capitalTimeline = []; // [{ dateKey, cumulativeNet, capital, relativePct }]
 let __capitalRecalcTimer = null;
 let __isCalculatingCapital = false;
 // Modo de visualización: 'dollars' (montos en $, fuente de verdad) o 'percent'
@@ -217,6 +217,12 @@ datePicker.addEventListener('change', () => {
     loadData();
     scheduleGenerateSummaries();
     renderCapitalDisplays(getCurrentNet());
+    // Si hay sesión iniciada, recrear el listener por-fecha para apuntar a la
+    // nueva fecha. Sin esto, el snapshot listener anterior seguía escribiendo
+    // currentData con datos de la fecha previa cuando llegaban cambios remotos.
+    if (window._firebase && window._firebase.uid) {
+        loadDataFirestore().catch(() => { /* ignore */ });
+    }
 });
 
 let _unsubscribeJournalCollectionListener = null;
@@ -641,6 +647,10 @@ function computeCapitalTimelineFromJournals(journalMap) {
     const timeline = [];
     let cumulativeNet = 0;
 
+    // Salvaguarda: si por alguna razón el capital inicial es 0 o inválido,
+    // usamos 1 como referencia para no producir Infinity al dividir.
+    const baseCapital = (capitalConfig.initial && capitalConfig.initial > 0) ? capitalConfig.initial : 1;
+
     for (const dateKey of keys) {
         const data = journalMap[dateKey];
         if (!data) continue;
@@ -650,8 +660,8 @@ function computeCapitalTimelineFromJournals(journalMap) {
         if (!dailyNet) continue;
 
         cumulativeNet += dailyNet;
-        const capital = capitalConfig.initial + cumulativeNet;
-        const relativePct = (cumulativeNet / capitalConfig.initial) * 100;
+        const capital = baseCapital + cumulativeNet;
+        const relativePct = (cumulativeNet / baseCapital) * 100;
 
         timeline.push({
             dateKey,
@@ -666,9 +676,9 @@ function computeCapitalTimelineFromJournals(journalMap) {
 
 function getCapitalSnapshot() {
     const base = {
-        factor: 1,
         capital: capitalConfig.initial,
-        relativePct: 0
+        relativePct: 0,
+        cumulativeNet: 0
     };
     if (!capitalTimeline || capitalTimeline.length === 0) return base;
     return capitalTimeline[capitalTimeline.length - 1];
@@ -992,11 +1002,14 @@ function renderMonthHeatmap(year, month, weeks) {
             else if (info.net < 0) cls += ' loss-' + intensity(Math.abs(info.net));
             const sign = info.net > 0 ? '+' : (info.net < 0 ? '−' : '');
             const absNet = Math.abs(info.net);
-            // Tooltip completo (al hacer hover): formato $X.XX con desglose TP/SL
-            const fullAmount = `${sign}$${absNet.toFixed(2)}`;
+            // Tooltip completo: usa formatAmount para respetar el modo $/% activo.
+            const fullAmount = formatAmount(info.net, { showSign: true });
             // Versión compacta dentro de la celda (1 decimal o sin decimales si es entero)
-            const compactAmount = absNet >= 100 ? `${sign}${Math.round(absNet)}` : `${sign}${absNet.toFixed(1)}`;
-            title = `${day}: ${fullAmount} (TP +$${info.tp.toFixed(2)} / SL −$${info.sl.toFixed(2)})`;
+            const unit = getDisplayMode() === 'percent' ? '%' : '';
+            const compactAmount = absNet >= 100
+                ? `${sign}${Math.round(absNet)}${unit}`
+                : `${sign}${absNet.toFixed(1)}${unit}`;
+            title = `${day}: ${fullAmount} (TP ${formatAmount(info.tp, { showSign: true })} / SL ${formatAmount(-info.sl, { showSign: true })})`;
             pctHtml = `<div class="heatmap-cell-pct">${compactAmount}</div>`;
         } else {
             cls += ' is-empty-day';
@@ -1265,7 +1278,10 @@ async function saveDataFirestore() {
     const db = window._firebase.db;
     try {
         const docRef = window.firebaseFirestoreDoc(db, 'users', uid, 'journals', date);
-        await window.firebaseFirestoreSetDoc(docRef, currentData);
+        // Normalizar antes de subir: migra entradas legacy (t1/t2/t3 → targets[]),
+        // limpia campos malformados, garantiza shape consistente en Firestore.
+        const payload = normalizeJournalData(currentData);
+        await window.firebaseFirestoreSetDoc(docRef, payload);
     } catch (err) {
         console.error('Error guardando en Firestore', err);
         throw err;
@@ -1990,7 +2006,7 @@ function buildRowViewHTML(type, id, item) {
         const signedDollars = (isTP ? 1 : -1) * Number(item.value || 0);
         items.push({
             label: isTP ? 'Ganancia' : 'Pérdida',
-            value: formatAmount(signedDollars, { showSign: true }) || formatAmount(0),
+            value: formatAmount(signedDollars, { showSign: true }),
             cls: valueColorClass
         });
     }
@@ -2118,12 +2134,12 @@ function updateTotals() {
 
     bumpIfChanged(document.getElementById('tp-total-display'), formatAmount(tpTotal));
     bumpIfChanged(document.getElementById('sl-total-display'), formatAmount(slTotal));
-    bumpIfChanged(document.getElementById('footer-tp'), formatAmount(tpTotal, { showSign: true }) || formatAmount(0));
-    bumpIfChanged(document.getElementById('footer-sl'), formatAmount(-slTotal, { showSign: true }) || formatAmount(0));
+    bumpIfChanged(document.getElementById('footer-tp'), formatAmount(tpTotal, { showSign: true }));
+    bumpIfChanged(document.getElementById('footer-sl'), formatAmount(-slTotal, { showSign: true }));
 
     const netEl = document.getElementById('footer-net');
     const colorClass = net > 0 ? 'text-green-500 dark:text-green-400' : (net < 0 ? 'text-red-500 dark:text-red-400' : 'text-slate-800 dark:text-slate-200');
-    bumpIfChanged(netEl, formatAmount(net, { showSign: true }) || formatAmount(0));
+    bumpIfChanged(netEl, formatAmount(net, { showSign: true }));
     if (netEl) netEl.className = "font-bold text-lg tabular-nums " + colorClass;
 
     renderCapitalDisplays(net);
@@ -2243,7 +2259,7 @@ async function generateSummaries() {
                                     <i class="fa-solid fa-chevron-right month-chevron text-slate-400 dark:text-slate-500 transition-transform"></i>
                                     <div class="font-bold text-slate-700 dark:text-slate-200">${monthNameCap}</div>
                                 </div>
-                                <div class="font-bold text-lg ${monthNetClass} tabular-nums">${signM}$${Math.abs(stats.net).toFixed(2)}</div>
+                                <div class="font-bold text-lg ${monthNetClass} tabular-nums">${formatAmount(stats.net, { showSign: true })}</div>
                             </div>
                             <div class="grid grid-cols-3 gap-4 text-center mb-3">
                                 <div>
