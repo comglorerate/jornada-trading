@@ -67,10 +67,100 @@ function normalizeCurrentData() {
 }
 // Capital dinámico: configuración y estado
 const CAPITAL_STORAGE_KEY = 'trading_capital_config';
+const DISPLAY_PREF_KEY = 'trading_display_pref';
 let capitalConfig = { initial: 1000 };
 let capitalTimeline = []; // [{ dateKey, factor, capital, relativePct }]
 let __capitalRecalcTimer = null;
 let __isCalculatingCapital = false;
+// Modo de visualización: 'dollars' (montos en $, fuente de verdad) o 'percent'
+// (mostrar todo como % del capital inicial). El % se calcula al vuelo.
+let displayPreference = { mode: 'dollars' };
+try {
+    const __raw = localStorage.getItem(DISPLAY_PREF_KEY);
+    if (__raw) {
+        const __p = JSON.parse(__raw);
+        if (__p && (__p.mode === 'dollars' || __p.mode === 'percent')) displayPreference.mode = __p.mode;
+    }
+} catch (e) { /* ignore */ }
+
+function getDisplayMode() {
+    return displayPreference.mode;
+}
+
+// Formatea un monto numérico cambiando solo el símbolo según el modo activo.
+// No hace ninguna conversión: el valor 25 se ve como "$25.00" o "25.00%".
+// opts.showSign = true → antepone "+" o "−" (cero sin signo).
+function formatAmount(value, opts) {
+    const o = opts || {};
+    const num = Number(value) || 0;
+    const isNeg = num < 0;
+    const abs = Math.abs(num);
+    const body = getDisplayMode() === 'percent' ? abs.toFixed(2) + '%' : '$' + abs.toFixed(2);
+    if (!o.showSign || num === 0) return body;
+    return (isNeg ? '−' : '+') + body;
+}
+
+// Parsea el input del usuario a número. Sin conversión por modo: 25 siempre es 25.
+function inputValueToDollars(rawValue) {
+    const v = parseFloat(String(rawValue == null ? '' : rawValue).replace(',', '.').trim());
+    return Number.isFinite(v) ? v : NaN;
+}
+
+// Devuelve el valor a precargar en el input del editor. Sin conversión.
+function dollarsToInputValue(value) {
+    return Math.round((Number(value) || 0) * 100) / 100;
+}
+
+function setDisplayMode(mode) {
+    if (mode !== 'dollars' && mode !== 'percent') return;
+    if (displayPreference.mode === mode) return;
+    displayPreference.mode = mode;
+    try { localStorage.setItem(DISPLAY_PREF_KEY, JSON.stringify(displayPreference)); } catch (e) { /* ignore */ }
+    saveDisplayModeRemote(mode);
+    refreshDisplayModeUI();
+    // Cerrar paneles abiertos (sus inputs están en otro modo)
+    document.querySelectorAll('.row-editor:not(.hidden)').forEach(el => {
+        el.classList.add('hidden');
+        el.innerHTML = '';
+    });
+    document.querySelectorAll('.trade-entry-row.is-expanded').forEach(el => el.classList.remove('is-expanded'));
+    try { renderUI(); } catch (e) { /* ignore */ }
+    try { scheduleCapitalRecalc(0); } catch (e) { /* ignore */ }
+    try { scheduleGenerateSummaries(80); } catch (e) { /* ignore */ }
+}
+
+async function saveDisplayModeRemote(mode) {
+    if (typeof hasFirestore !== 'function' || !hasFirestore()) return;
+    const uid = window._firebase && window._firebase.uid;
+    if (!uid) return;
+    try {
+        const docRef = window.firebaseFirestoreDoc(window._firebase.db, 'users', uid, 'config', 'capital');
+        await window.firebaseFirestoreSetDoc(docRef, { displayMode: mode }, { merge: true });
+    } catch (err) {
+        console.warn('No se pudo guardar displayMode en Firestore', err);
+    }
+}
+
+// Refresca aspectos visuales que dependen del modo: botones del toggle y
+// placeholders de los inputs rápidos.
+function refreshDisplayModeUI() {
+    const mode = getDisplayMode();
+    const isPercent = mode === 'percent';
+    document.querySelectorAll('[data-display-mode]').forEach(btn => {
+        btn.classList.toggle('is-active', btn.dataset.displayMode === mode);
+    });
+    const tpInput = document.getElementById('tp-input');
+    const slInput = document.getElementById('sl-input');
+    if (tpInput) tpInput.placeholder = isPercent ? '0.00 %' : '$ 0.00';
+    if (slInput) slInput.placeholder = isPercent ? '0.00 %' : '$ 0.00';
+    // Etiquetas del KPI card cambian de "Capital" a "Porcentaje" según el modo.
+    const kpiInitial = document.getElementById('kpi-label-initial');
+    const kpiCurrent = document.getElementById('kpi-label-current');
+    if (kpiInitial) kpiInitial.innerText = isPercent ? 'Porcentaje inicial' : 'Capital inicial';
+    if (kpiCurrent) kpiCurrent.innerText = isPercent ? 'Porcentaje actual' : 'Capital actual';
+    const kpiSymbol = document.getElementById('kpi-currency-symbol');
+    if (kpiSymbol) kpiSymbol.innerText = isPercent ? '%' : '$';
+}
 const DATE_STORAGE_KEY = 'trading_selected_date';
 
 const datePicker = document.getElementById('datePicker');
@@ -219,14 +309,30 @@ function ensureCapitalConfigListener() {
             try {
                 if (!snap || !snap.exists || !snap.exists()) return;
                 const data = snap.data() || {};
+                let changed = false;
+
+                // 1) Capital inicial
                 const candidate = data.initialCapital ?? data.initial;
                 const next = sanitizeCapitalValue(candidate, capitalConfig.initial);
-                if (Math.abs(next - capitalConfig.initial) < 1e-6) return; // no cambió
-                capitalConfig.initial = next;
-                try { localStorage.setItem(CAPITAL_STORAGE_KEY, JSON.stringify({ initial: capitalConfig.initial })); } catch (e) { /* ignore */ }
-                const input = document.getElementById('capital-input');
-                if (input && document.activeElement !== input) input.value = capitalConfig.initial;
-                scheduleCapitalRecalc(0);
+                if (Math.abs(next - capitalConfig.initial) >= 1e-6) {
+                    capitalConfig.initial = next;
+                    try { localStorage.setItem(CAPITAL_STORAGE_KEY, JSON.stringify({ initial: capitalConfig.initial })); } catch (e) { /* ignore */ }
+                    const input = document.getElementById('capital-input');
+                    if (input && document.activeElement !== input) input.value = capitalConfig.initial;
+                    changed = true;
+                }
+
+                // 2) Modo de visualización
+                const remoteMode = data.displayMode;
+                if ((remoteMode === 'dollars' || remoteMode === 'percent') && remoteMode !== displayPreference.mode) {
+                    displayPreference.mode = remoteMode;
+                    try { localStorage.setItem(DISPLAY_PREF_KEY, JSON.stringify(displayPreference)); } catch (e) { /* ignore */ }
+                    refreshDisplayModeUI();
+                    try { renderUI(); } catch (e) { /* ignore */ }
+                    changed = true;
+                }
+
+                if (changed) scheduleCapitalRecalc(0);
             } catch (err) {
                 console.warn('Error procesando capital config snapshot', err);
             }
@@ -367,6 +473,11 @@ async function loadCapitalConfig(forceRemote = false) {
                     const data = snap.data() || {};
                     const candidate = data.initialCapital ?? data.initial;
                     capitalConfig.initial = sanitizeCapitalValue(candidate, capitalConfig.initial);
+                    // Modo de visualización ($ / %) viene en el mismo doc
+                    if (data.displayMode === 'dollars' || data.displayMode === 'percent') {
+                        displayPreference.mode = data.displayMode;
+                        try { localStorage.setItem(DISPLAY_PREF_KEY, JSON.stringify(displayPreference)); } catch (e) { /* ignore */ }
+                    }
                 } else if (forceRemote) {
                     await window.firebaseFirestoreSetDoc(docRef, { initialCapital: capitalConfig.initial });
                 }
@@ -577,7 +688,9 @@ function renderCapitalDisplays(netForDay = null) {
     if (absEl) {
         const isPositive = pct > 0;
         const isNegative = pct < 0;
-        absEl.innerText = '$' + formatCurrency(abs);
+        const symbol = getDisplayMode() === 'percent' ? '%' : '$';
+        const num = formatCurrency(abs);
+        absEl.innerText = getDisplayMode() === 'percent' ? num + symbol : symbol + num;
         absEl.classList.remove('text-green-500','dark:text-green-400','text-red-500','dark:text-red-400','text-slate-800','dark:text-slate-100');
         if (isPositive) absEl.classList.add('text-green-500','dark:text-green-400');
         else if (isNegative) absEl.classList.add('text-red-500','dark:text-red-400');
@@ -596,13 +709,12 @@ function renderCapitalDisplays(netForDay = null) {
     const mainEl = document.getElementById('main-profit-display');
     if (mainEl) {
         const net = netForDay === null ? getCurrentNet() : netForDay;
-        const netSign = net > 0 ? '+' : (net < 0 ? '−' : '');
-        const absNet = Math.abs(net);
         const netColor = net > 0
             ? 'text-green-500 dark:text-green-400'
             : (net < 0 ? 'text-red-500 dark:text-red-400' : 'text-slate-400 dark:text-slate-500');
         const arrow = net > 0 ? '▲' : (net < 0 ? '▼' : '·');
-        mainEl.innerHTML = `<span class="${netColor}">${arrow} ${netSign}$${absNet.toFixed(2)}</span>`;
+        const body = net === 0 ? formatAmount(0) : formatAmount(net, { showSign: true });
+        mainEl.innerHTML = `<span class="${netColor}">${arrow} ${body}</span>`;
     }
 }
 
@@ -743,14 +855,13 @@ function renderCapitalSparkline() {
       </div>
     `;
 
-    // Meta: variación absoluta vs capital inicial en la ventana visible
+    // Meta: variación vs el inicio de la ventana visible. Formato según modo.
     if (metaEl) {
         const startCap = points[0].capital;
         const delta = last - startCap;
-        const pct = startCap > 0 ? (delta / startCap) * 100 : 0;
-        const sign = delta > 0 ? '+' : (delta < 0 ? '−' : '');
         const cls = delta > 0 ? 'text-green-500 dark:text-green-400' : (delta < 0 ? 'text-red-500 dark:text-red-400' : '');
-        metaEl.innerHTML = `<span>${n} días · </span><span class="${cls}">${sign}${Math.abs(pct).toFixed(2)}%</span>`;
+        const body = delta === 0 ? formatAmount(0) : formatAmount(delta, { showSign: true });
+        metaEl.innerHTML = `<span>${n} días · </span><span class="${cls}">${body}</span>`;
     }
 
     // Hover interactivo: encontrar el punto más cercano según x del mouse
@@ -787,7 +898,7 @@ function renderCapitalSparkline() {
 
         const dateLabel = points[bestI].dateKey || 'Inicial';
         ttDate.innerText = dateLabel;
-        ttValue.innerText = '$' + formatCurrency(points[bestI].capital);
+        ttValue.innerText = formatAmount(points[bestI].capital);
         tooltip.style.left = cssX + 'px';
         tooltip.style.top = cssY + 'px';
         tooltip.classList.add('is-visible');
@@ -816,6 +927,8 @@ window.addEventListener('resize', () => {
 async function initCapitalFeature() {
     try { await loadCapitalConfig(); } catch (e) { /* ignore */ }
     try { setupCapitalInput(); } catch (e) { /* ignore */ }
+    // Sincronizar la UI con el modo de visualización cargado (placeholders, toggle).
+    try { refreshDisplayModeUI(); } catch (e) { /* ignore */ }
     renderCapitalDisplays(getCurrentNet());
     scheduleCapitalRecalc(0);
 }
@@ -1300,8 +1413,8 @@ async function addEntry(type) {
     const assetInput = document.getElementById(assetId);
     if (!input) return;
 
-    const raw = (input.value || '').toString().replace(',', '.').trim();
-    const value = parseFloat(raw);
+    // Lee el input según el modo de visualización: $ directo o % → $.
+    const value = inputValueToDollars(input.value);
     const asset = (assetInput && assetInput.value || '').trim().toUpperCase();
 
     if (!Number.isFinite(value) || value <= 0) {
@@ -1483,8 +1596,8 @@ function buildRowEditorHTML(type, id, item) {
                 <input type="text" class="details-input" data-field="asset" value="${(item.asset || '').replace(/"/g,'&quot;')}" placeholder="BTC" />
             </label>
             <label class="details-field">
-                <span>${type === 'tp' ? 'Ganancia ($)' : 'Pérdida ($)'}</span>
-                <input type="number" step="0.01" min="0.01" class="details-input" data-field="value" value="${Number(item.value || 0)}" inputmode="decimal" />
+                <span>${type === 'tp' ? `Ganancia (${getDisplayMode() === 'percent' ? '%' : '$'})` : `Pérdida (${getDisplayMode() === 'percent' ? '%' : '$'})`}</span>
+                <input type="number" step="0.01" min="0.01" class="details-input" data-field="value" value="${dollarsToInputValue(item.value || 0)}" inputmode="decimal" />
             </label>
             <label class="details-field">
                 <span>Tipo</span>
@@ -1608,17 +1721,18 @@ function saveEdit(type, id) {
         return el ? el.value : '';
     };
 
-    const newValue = parseFloat(get('value'));
-    if (!Number.isFinite(newValue) || newValue <= 0) {
+    // El input "value" viene en el modo activo ($ o %). Lo convertimos a $.
+    const newValueDollars = inputValueToDollars(get('value'));
+    if (!Number.isFinite(newValueDollars) || newValueDollars <= 0) {
         showToast('Monto inválido', 'error');
         return;
     }
-    if (newValue > 1000000) {
+    if (newValueDollars > 1000000) {
         showToast('Monto demasiado alto', 'error');
         return;
     }
 
-    item.value = Math.round(newValue * 100) / 100;
+    item.value = Math.round(newValueDollars * 100) / 100;
     item.asset = (get('asset') || '').trim().toUpperCase() || '---';
 
     const targets = Array.from(editor.querySelectorAll('.target-input'))
@@ -1790,6 +1904,10 @@ function renderList(type, list) {
         const valueNum = Number.isFinite(safeValue) ? safeValue : 0;
         const safeAsset = (item && item.asset) ? String(item.asset) : '---';
         const hasDetails = !!(item && item.details && Object.keys(item.details).length);
+        // Mostramos el monto según el modo activo. El signo lo da el tipo (TP/SL)
+        // ya que internamente value siempre es positivo.
+        const signedDollars = (type === 'tp' ? 1 : -1) * valueNum;
+        const displayText = formatAmount(signedDollars, { showSign: true });
 
         const wrapper = document.createElement('div');
         wrapper.dataset.entryId = item.id;
@@ -1801,7 +1919,7 @@ function renderList(type, list) {
                  onclick="onRowClick(event, '${type}', ${item.id})">
                 <div class="flex items-center gap-3 min-w-0 flex-1">
                     <span id="asset-${type}-${item.id}" class="font-bold text-slate-700 dark:text-slate-200 text-xs bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 rounded">${safeAsset}</span>
-                    <span id="value-${type}-${item.id}" data-value="${valueNum}" class="value-span font-bold ${valueColor} text-sm tabular-nums">${sign}$${valueNum.toFixed(2)}</span>
+                    <span id="value-${type}-${item.id}" data-value="${valueNum}" class="value-span font-bold ${valueColor} text-sm tabular-nums">${displayText}</span>
                     <span class="entry-details-badge ${hasDetails ? 'has-details' : ''}" title="${hasDetails ? 'Tiene detalles' : 'Sin detalles'}">
                         <i class="fa-solid ${hasDetails ? 'fa-circle-info' : 'fa-ellipsis'}"></i>
                     </span>
@@ -1868,11 +1986,14 @@ function buildRowViewHTML(type, id, item) {
 
     const items = [];
     items.push({ label: 'Activo', value: item.asset || '---' });
-    items.push({
-        label: isTP ? 'Ganancia' : 'Pérdida',
-        value: `${sign}$${Number(item.value || 0).toFixed(2)}`,
-        cls: valueColorClass
-    });
+    {
+        const signedDollars = (isTP ? 1 : -1) * Number(item.value || 0);
+        items.push({
+            label: isTP ? 'Ganancia' : 'Pérdida',
+            value: formatAmount(signedDollars, { showSign: true }) || formatAmount(0),
+            cls: valueColorClass
+        });
+    }
     if (det.side) items.push({ label: 'Tipo', value: det.side });
     if (det.leverage) items.push({ label: 'Apalancamiento', value: `${det.leverage}X` });
     if (det.entry) items.push({ label: 'Precio entrada', value: formatPrice(det.entry) });
@@ -1995,16 +2116,14 @@ function updateTotals() {
     const slTotal = currentData.sls.reduce((acc, curr) => acc + (Number(curr && curr.value) || 0), 0);
     const net = tpTotal - slTotal;
 
-    bumpIfChanged(document.getElementById('tp-total-display'), '$' + tpTotal.toFixed(2));
-    bumpIfChanged(document.getElementById('sl-total-display'), '$' + slTotal.toFixed(2));
-    bumpIfChanged(document.getElementById('footer-tp'), '+$' + tpTotal.toFixed(2));
-    bumpIfChanged(document.getElementById('footer-sl'), '−$' + slTotal.toFixed(2));
+    bumpIfChanged(document.getElementById('tp-total-display'), formatAmount(tpTotal));
+    bumpIfChanged(document.getElementById('sl-total-display'), formatAmount(slTotal));
+    bumpIfChanged(document.getElementById('footer-tp'), formatAmount(tpTotal, { showSign: true }) || formatAmount(0));
+    bumpIfChanged(document.getElementById('footer-sl'), formatAmount(-slTotal, { showSign: true }) || formatAmount(0));
 
     const netEl = document.getElementById('footer-net');
-    const sign = net > 0 ? '+' : (net < 0 ? '−' : '');
-    const absNet = Math.abs(net);
     const colorClass = net > 0 ? 'text-green-500 dark:text-green-400' : (net < 0 ? 'text-red-500 dark:text-red-400' : 'text-slate-800 dark:text-slate-200');
-    bumpIfChanged(netEl, sign + '$' + absNet.toFixed(2));
+    bumpIfChanged(netEl, formatAmount(net, { showSign: true }) || formatAmount(0));
     if (netEl) netEl.className = "font-bold text-lg tabular-nums " + colorClass;
 
     renderCapitalDisplays(net);

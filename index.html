@@ -240,10 +240,10 @@
             <div class="kpi-cell">
                 <div class="kpi-label">
                     <i class="fa-solid fa-wallet text-slate-400"></i>
-                    Capital inicial
+                    <span id="kpi-label-initial">Capital inicial</span>
                 </div>
                 <div class="kpi-input-wrap">
-                    <span class="kpi-currency-symbol">$</span>
+                    <span id="kpi-currency-symbol" class="kpi-currency-symbol">$</span>
                     <input type="number" step="0.01" min="0.01" id="capital-input" placeholder="1000"
                         class="kpi-input">
                 </div>
@@ -251,7 +251,7 @@
 
             <!-- Capital acumulado (lectura) -->
             <div class="kpi-cell kpi-cell-center">
-                <div class="kpi-label kpi-label-muted">Capital actual</div>
+                <div id="kpi-label-current" class="kpi-label kpi-label-muted">Capital actual</div>
                 <div id="capital-abs-display" class="kpi-value tabular-nums">--</div>
                 <div id="capital-pct-display" class="kpi-hint tabular-nums">&nbsp;</div>
             </div>
@@ -271,6 +271,16 @@
                     <span id="capital-sparkline-meta" class="kpi-sparkline-meta tabular-nums"></span>
                 </div>
                 <div id="capital-sparkline" class="kpi-sparkline" aria-hidden="true"></div>
+            </div>
+        </div>
+
+        <!-- Toggle de modo de visualización: dólares o porcentaje. El % se calcula
+             siempre contra el capital inicial. La fuente de verdad sigue siendo $. -->
+        <div class="display-mode-bar" role="group" aria-label="Modo de visualización">
+            <span class="display-mode-label">Mostrar como</span>
+            <div class="display-mode-switch">
+                <button type="button" data-display-mode="dollars" class="display-mode-btn is-active" onclick="setDisplayMode('dollars')">$</button>
+                <button type="button" data-display-mode="percent" class="display-mode-btn" onclick="setDisplayMode('percent')">%</button>
             </div>
         </div>
     </div>
