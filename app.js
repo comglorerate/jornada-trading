@@ -438,11 +438,14 @@ function normalizeTradeEntry(item, idx, type) {
 }
 
 // Devuelve un objeto details "limpio" o null si está vacío.
-// Campos aceptados: leverage, entry, sl, targets[], notes.
+// Campos aceptados: side, leverage, entry, sl, targets[], notes.
 // Compatibilidad hacia atrás: acepta también t1/t2/t3 y los migra a targets.
 function sanitizeDetails(raw) {
     if (!raw || typeof raw !== 'object') return null;
     const out = {};
+
+    const side = String(raw.side || '').toUpperCase();
+    if (side === 'LONG' || side === 'SHORT') out.side = side;
 
     ['leverage', 'entry', 'sl'].forEach(k => {
         const v = Number(raw[k]);
@@ -1348,6 +1351,7 @@ function readAddDetailsPanel(type) {
         ? Array.from(panel.querySelectorAll('.target-input')).map(el => Number(el.value)).filter(v => Number.isFinite(v) && v > 0)
         : [];
     const raw = {
+        side: get('side'),
         leverage: get('leverage'),
         entry: get('entry'),
         sl: get('sl-price'),
@@ -1358,7 +1362,7 @@ function readAddDetailsPanel(type) {
 }
 
 function clearAddDetailsPanel(type) {
-    const ids = ['leverage', 'entry', 'sl-price', 'notes'];
+    const ids = ['side', 'leverage', 'entry', 'sl-price', 'notes'];
     ids.forEach(suffix => {
         const el = document.getElementById(`${type}-${suffix}`);
         if (el) el.value = '';
@@ -1471,6 +1475,14 @@ function buildRowEditorHTML(type, id, item) {
             <label class="details-field">
                 <span>${type === 'tp' ? 'Ganancia ($)' : 'Pérdida ($)'}</span>
                 <input type="number" step="0.01" min="0.01" class="details-input" data-field="value" value="${Number(item.value || 0)}" inputmode="decimal" />
+            </label>
+            <label class="details-field">
+                <span>Tipo</span>
+                <select class="details-input" data-field="side">
+                    <option value="">—</option>
+                    <option value="LONG"${det.side === 'LONG' ? ' selected' : ''}>LONG</option>
+                    <option value="SHORT"${det.side === 'SHORT' ? ' selected' : ''}>SHORT</option>
+                </select>
             </label>
             <label class="details-field">
                 <span>Apalancamiento</span>
@@ -1604,6 +1616,7 @@ function saveEdit(type, id) {
         .filter(v => Number.isFinite(v) && v > 0);
 
     const det = sanitizeDetails({
+        side: get('side'),
         leverage: get('leverage'),
         entry: get('entry'),
         sl: get('sl'),
@@ -1841,6 +1854,7 @@ function buildRowViewHTML(type, id, item) {
         value: `${sign}$${Number(item.value || 0).toFixed(2)}`,
         cls: valueColorClass
     });
+    if (det.side) items.push({ label: 'Tipo', value: det.side });
     if (det.leverage) items.push({ label: 'Apalancamiento', value: `${det.leverage}X` });
     if (det.entry) items.push({ label: 'Precio entrada', value: formatPrice(det.entry) });
     if (det.sl) items.push({ label: 'Stop Loss', value: formatPrice(det.sl) });
