@@ -892,23 +892,24 @@ async function loadDataFirestore() {
         // 1) Leer una vez para inicializar la UI
         const snap = await window.firebaseFirestoreGetDoc(docRef);
         if (snap && snap.exists && snap.exists()) {
+            // Existe documento remoto: es la fuente de verdad, sin excepciones.
+            // (Si está vacío, queremos que la UI también esté vacía — no resucitar
+            // datos viejos del localStorage de este dispositivo.)
             const remote = snap.data() || { tps: [], sls: [] };
-            const remoteHasTrades = (Array.isArray(remote.tps) && remote.tps.length) || (Array.isArray(remote.sls) && remote.sls.length);
-            const localHasTrades = (Array.isArray(currentData.tps) && currentData.tps.length) || (Array.isArray(currentData.sls) && currentData.sls.length);
-
-            // Si remoto tiene trades, tiene preferencia (regla de "fuente de verdad").
-            // Si remoto está vacío pero local tiene datos (ej. el usuario añadió cosas
-            // sin estar logueado), conservamos local y disparamos un saveData()
-            // para subirlo a la nube.
-            if (remoteHasTrades || !localHasTrades) {
-                currentData = remote;
-            } else {
-                // mantener local; programar subida
-                setTimeout(() => { saveData().catch(()=>{}); }, 100);
-            }
+            currentData = {
+                tps: Array.isArray(remote.tps) ? remote.tps : [],
+                sls: Array.isArray(remote.sls) ? remote.sls : []
+            };
+            // Sincronizar el cache local con lo que dice la nube
+            try { localStorage.setItem(`trading_${date}`, JSON.stringify(currentData)); } catch (e) { /* ignore */ }
+        } else {
+            // El doc remoto NO existe para esta fecha. Como hay sesión iniciada,
+            // Firestore manda: la fecha no tiene datos. Limpiamos currentData
+            // y removemos cualquier cache local viejo de esta fecha para que no
+            // resucite ni se vuelva a subir a la nube.
+            currentData = { tps: [], sls: [] };
+            try { localStorage.removeItem(`trading_${date}`); } catch (e) { /* ignore */ }
         }
-        // Si el doc remoto NO existe, NO sobrescribimos currentData:
-        // así preservamos lo que el usuario haya ingresado local antes de loguearse.
         normalizeCurrentData();
         renderUI();
         scheduleCapitalRecalc();
@@ -1901,17 +1902,12 @@ async function refreshUserDataAfterLogin() {
     try { scheduleCapitalRecalc(0); } catch (e) {}
     try { scheduleGenerateSummaries(80); } catch (e) {}
     try { updateAuthUI(); } catch (e) {}
-    // Migración silenciosa de datos locales si el usuario tiene cuenta con email
-    try {
-        const uid = window._firebase && window._firebase.uid;
-        const user = window._firebase && window._firebase.auth && window._firebase.auth.currentUser;
-        const localKeys = getLocalTradingKeys();
-        if (uid && user && user.email && localKeys.length > 0) {
-            migrateLocalToFirestore(false).catch(err => {
-                console.warn('Error en migración local->Firestore', err);
-            });
-        }
-    } catch (e) { /* ignore */ }
+    // NOTA: la migración automática silenciosa local->Firestore se deshabilitó
+    // a propósito. Causaba que un dispositivo con cache viejo (p. ej. el
+    // teléfono después de haber borrado todo desde el PC) "resucite" datos
+    // antiguos y los suba a la nube, sobrescribiendo lo que el usuario acaba
+    // de hacer en otro dispositivo. Si el usuario quiere subir datos locales
+    // a la nube, debe usar el botón "Sincronizar ahora" explícitamente.
 }
 
 // Watch for auth changes when firebase becomes available
@@ -1923,7 +1919,17 @@ function watchAuthChanges() {
 
         if (newUid && newUid !== __previousUid) {
             // Transición: anónimo/desconectado → conectado, o cambio de cuenta.
-            // Hacer un refresh completo para que la UI refleje los datos del usuario.
+            // Limpiar el cache local `trading_*` de este dispositivo: a partir
+            // de ahora la fuente de verdad es Firestore, no el localStorage.
+            // Así evitamos que cache viejo "resucite" datos que el usuario ya
+            // borró desde otro dispositivo.
+            try {
+                for (let i = localStorage.length - 1; i >= 0; i--) {
+                    const k = localStorage.key(i);
+                    if (k && k.startsWith('trading_')) localStorage.removeItem(k);
+                }
+            } catch (e) { console.warn('No se pudo limpiar cache local tras login', e); }
+            try { __journalCache && __journalCache.clear && __journalCache.clear(); } catch (e) { /* ignore */ }
             ensureJournalCollectionListener();
             refreshUserDataAfterLogin();
         } else if (!newUid && __previousUid) {
