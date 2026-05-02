@@ -135,12 +135,15 @@ function ensureJournalCollectionListener() {
     if (!window._firebase || !window._firebase.db) return;
     const uid = window._firebase.uid;
     if (!uid) return;
+    // Asegurar también el listener del capital inicial — viven y mueren juntos.
+    try { ensureCapitalConfigListener(); } catch (e) { /* ignore */ }
     if (_unsubscribeJournalCollectionListener) return;
 
     const collRef = window.firebaseFirestoreCollection(window._firebase.db, 'users', uid, 'journals');
     _unsubscribeJournalCollectionListener = window.firebaseFirestoreOnSnapshot(
         collRef,
         (snapshot) => {
+            let touched = false;
             snapshot.docChanges().forEach(change => {
                 const dateKey = change.doc.id;
                 if (!dateKey) return;
@@ -148,12 +151,13 @@ function ensureJournalCollectionListener() {
 
                 if (change.type === 'removed') {
                     localStorage.removeItem(storageKey);
+                    try { __journalCache.delete(dateKey); } catch (e) { /* ignore */ }
                     if (dateKey === datePicker.value) {
                         currentData = { tps: [], sls: [] };
                         normalizeCurrentData();
                         renderUI();
-                        scheduleGenerateSummaries();
                     }
+                    touched = true;
                     return;
                 }
 
@@ -163,13 +167,22 @@ function ensureJournalCollectionListener() {
                     sls: Array.isArray(docData.sls) ? docData.sls : []
                 };
                 localStorage.setItem(storageKey, JSON.stringify(normalized));
+                // Mantener el cache en memoria sincronizado (lo usa fetchAllJournalsMerged
+                // indirectamente vía readManyJournalForDates).
+                try { __journalCache.set(dateKey, normalized); } catch (e) { /* ignore */ }
                 if (dateKey === datePicker.value) {
                     currentData = normalized;
                     normalizeCurrentData();
                     renderUI();
-                    scheduleGenerateSummaries();
                 }
+                touched = true;
             });
+            // Cualquier cambio en cualquier fecha afecta el capital acumulado y los
+            // resúmenes. Disparamos los recálculos UNA sola vez por snapshot (debounced).
+            if (touched) {
+                try { scheduleCapitalRecalc(); } catch (e) { /* ignore */ }
+                try { scheduleGenerateSummaries(); } catch (e) { /* ignore */ }
+            }
         },
         (err) => {
             console.warn('Listener de diarios cancelado:', err);
@@ -181,6 +194,50 @@ function cleanupJournalCollectionListener() {
     if (typeof _unsubscribeJournalCollectionListener === 'function') {
         _unsubscribeJournalCollectionListener();
         _unsubscribeJournalCollectionListener = null;
+    }
+    try { cleanupCapitalConfigListener(); } catch (e) { /* ignore */ }
+}
+
+// Listener en tiempo real para el capital inicial (users/{uid}/config/capital).
+// Sin esto, cambiar el capital inicial en un dispositivo no se ve en otro hasta
+// refrescar.
+let _unsubscribeCapitalConfigListener = null;
+
+function ensureCapitalConfigListener() {
+    if (!window._firebase || !window._firebase.db) return;
+    const uid = window._firebase.uid;
+    if (!uid) return;
+    if (_unsubscribeCapitalConfigListener) return;
+
+    const docRef = window.firebaseFirestoreDoc(window._firebase.db, 'users', uid, 'config', 'capital');
+    _unsubscribeCapitalConfigListener = window.firebaseFirestoreOnSnapshot(
+        docRef,
+        (snap) => {
+            try {
+                if (!snap || !snap.exists || !snap.exists()) return;
+                const data = snap.data() || {};
+                const candidate = data.initialCapital ?? data.initial;
+                const next = sanitizeCapitalValue(candidate, capitalConfig.initial);
+                if (Math.abs(next - capitalConfig.initial) < 1e-6) return; // no cambió
+                capitalConfig.initial = next;
+                try { localStorage.setItem(CAPITAL_STORAGE_KEY, JSON.stringify({ initial: capitalConfig.initial })); } catch (e) { /* ignore */ }
+                const input = document.getElementById('capital-input');
+                if (input && document.activeElement !== input) input.value = capitalConfig.initial;
+                scheduleCapitalRecalc(0);
+            } catch (err) {
+                console.warn('Error procesando capital config snapshot', err);
+            }
+        },
+        (err) => {
+            console.warn('Listener de capital config cancelado:', err);
+        }
+    );
+}
+
+function cleanupCapitalConfigListener() {
+    if (typeof _unsubscribeCapitalConfigListener === 'function') {
+        _unsubscribeCapitalConfigListener();
+        _unsubscribeCapitalConfigListener = null;
     }
 }
 
@@ -942,7 +999,14 @@ async function loadDataFirestore() {
                                     tps: data.tps || [],
                                     sls: data.sls || []
                                 };
-                                // No tocar localStorage aquí para no pisar datos offline propios
+                                // Sincronizar localStorage y cache en memoria con la
+                                // verdad remota. Antes evitábamos esto para no pisar
+                                // datos offline; ahora el contrato es claro: cuando hay
+                                // sesión iniciada, Firestore manda. Sin esto,
+                                // fetchAllJournalsMerged leía localStorage stale al
+                                // recalcular el capital y se quedaba desfasado.
+                                try { localStorage.setItem(`trading_${date}`, JSON.stringify(currentData)); } catch (e) { /* ignore */ }
+                                try { __journalCache.set(date, currentData); } catch (e) { /* ignore */ }
                                 renderUI();
                                 scheduleCapitalRecalc();
                                 scheduleGenerateSummaries();
