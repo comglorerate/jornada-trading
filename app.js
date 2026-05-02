@@ -143,6 +143,9 @@ function ensureJournalCollectionListener() {
     _unsubscribeJournalCollectionListener = window.firebaseFirestoreOnSnapshot(
         collRef,
         (snapshot) => {
+            // Si el usuario está viendo o editando un trade, no procesamos
+            // el snapshot ahora — el re-render destruiría el panel abierto.
+            if (isAnyRowEditorOpen()) return;
             let touched = false;
             snapshot.docChanges().forEach(change => {
                 const dateKey = change.doc.id;
@@ -1019,6 +1022,9 @@ async function loadDataFirestore() {
                 docRef,
                 (docSnap) => {
                     try {
+                        // Si el usuario está editando o viendo detalles, dejamos
+                        // pasar este snapshot — re-renderizar destruiría el panel.
+                        if (isAnyRowEditorOpen()) return;
                         if (docSnap && docSnap.exists && docSnap.exists()) {
                             const data = docSnap.data() || { tps: [], sls: [] };
                             // Evitar re-render innecesario si no cambió nada
@@ -1558,6 +1564,13 @@ function cancelEdit(type, id) {
     const wrapper = editor.closest('.trade-entry-wrapper');
     const row = wrapper && wrapper.querySelector('.trade-entry-row');
     if (row) row.classList.remove('is-expanded');
+
+    // Tras cerrar el panel, recuperamos cualquier actualización remota que
+    // hayamos saltado mientras estaba abierto (re-render + fetch fresco).
+    try { renderUI(); } catch (e) { /* ignore */ }
+    setTimeout(() => {
+        try { resyncFromFirestore('after-edit-close'); } catch (e) { /* ignore */ }
+    }, 50);
 }
 
 function saveEdit(type, id) {
@@ -1709,7 +1722,20 @@ async function clearAll() {
 }
 
 // --- RENDERIZADO UI ---
+// True si hay algún panel de fila abierto (vista o edición). Mientras esté
+// abierto, no re-renderizamos las listas para no destruir el panel.
+function isAnyRowEditorOpen() {
+    return !!document.querySelector('.row-editor:not(.hidden)');
+}
+
 function renderUI() {
+    // Si el usuario está editando o viendo detalles, no rehacemos las listas
+    // (eso destruiría el panel abierto y perdería su trabajo). Los totales sí
+    // se actualizan, no afectan al panel.
+    if (isAnyRowEditorOpen()) {
+        updateTotals();
+        return;
+    }
     renderList('tp', currentData.tps);
     renderList('sl', currentData.sls);
     updateTotals();
@@ -2688,6 +2714,11 @@ async function resyncFromFirestore(reason) {
     if (!navigator.onLine) return;
     const uid = window._firebase && window._firebase.uid;
     if (!uid) return;
+
+    // Si el usuario tiene un panel de fila abierto (vista o editor), no
+    // re-sincronizamos: loadDataFirestore haría renderUI y destruiría el
+    // panel. Cuando el usuario lo cierre, se llama a resync manualmente.
+    if (isAnyRowEditorOpen()) return;
 
     try {
         // Re-asegurar el listener global de la colección por si fue cancelado.
