@@ -249,6 +249,254 @@ button:focus-visible {
 .trade-add-btn:active { transform: translateY(0); }
 @media (max-width: 480px) { .trade-add-btn { width: 44px; } }
 
+/* ========== Panel de detalles (opcional) ========== */
+.details-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    background: transparent;
+    border: 1px dashed var(--border);
+    color: var(--muted-2);
+    font-size: 0.78rem;
+    font-weight: 600;
+    padding: 0.4rem 0.7rem;
+    border-radius: 0.6rem;
+    cursor: pointer;
+    transition: background-color 0.15s, color 0.15s, border-color 0.15s;
+}
+.details-toggle:hover {
+    background: var(--surface-muted);
+    color: var(--text);
+    border-color: var(--primary);
+}
+.details-toggle .details-toggle-chevron {
+    transition: transform 0.2s ease;
+    font-size: 0.7rem;
+}
+.details-toggle.is-open .details-toggle-chevron {
+    transform: rotate(180deg);
+}
+
+.details-panel {
+    background: var(--surface-muted);
+    border: 1px solid var(--border);
+    border-radius: 0.75rem;
+    padding: 0.85rem;
+    animation: detailsPanelIn 0.18s ease-out;
+}
+@keyframes detailsPanelIn {
+    from { opacity: 0; transform: translateY(-4px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+.details-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.6rem 0.7rem;
+}
+@media (min-width: 640px) {
+    .details-grid { grid-template-columns: repeat(4, 1fr); }
+}
+.details-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    min-width: 0;
+}
+.details-field > span {
+    font-size: 0.68rem;
+    font-weight: 600;
+    color: var(--muted-2);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+.details-field-wide {
+    grid-column: 1 / -1;
+}
+.details-input {
+    width: 100%;
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 0.5rem;
+    padding: 0.4rem 0.55rem;
+    font-size: 0.85rem;
+    font-family: inherit;
+    transition: border-color 0.15s, box-shadow 0.15s;
+    /* Sin spinner nativo en number */
+    -moz-appearance: textfield;
+    appearance: textfield;
+}
+.details-input:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+}
+.details-input::-webkit-outer-spin-button,
+.details-input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    appearance: none;
+    margin: 0;
+}
+.details-textarea {
+    resize: vertical;
+    min-height: 2.4rem;
+    font-size: 0.82rem;
+    line-height: 1.35;
+}
+
+/* Input con sufijo (ej. apalancamiento "10X") */
+.details-input-wrap {
+    position: relative;
+    display: block;
+}
+.details-input-with-suffix {
+    padding-right: 1.6rem;
+}
+.details-input-suffix {
+    position: absolute;
+    right: 0.55rem;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--muted-2);
+    font-weight: 700;
+    font-size: 0.8rem;
+    pointer-events: none;
+    user-select: none;
+}
+
+.details-add-target {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    background: transparent;
+    border: 1px dashed var(--border);
+    color: var(--muted-2);
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: 0.35rem 0.7rem;
+    border-radius: 0.5rem;
+    cursor: pointer;
+    margin-top: 0.7rem;
+    transition: background-color 0.15s, color 0.15s, border-color 0.15s;
+}
+.details-add-target:hover {
+    background: var(--surface);
+    color: var(--primary);
+    border-color: var(--primary);
+}
+.details-add-target i {
+    font-size: 0.65rem;
+}
+.details-add-target.hidden { display: none; }
+
+/* Indicador en la fila si la entrada tiene detalles */
+.entry-details-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: var(--surface-muted);
+    color: var(--muted-2);
+    font-size: 0.6rem;
+    border: 1px solid var(--border);
+}
+.entry-details-badge.has-details {
+    background: rgba(37, 99, 235, 0.12);
+    color: var(--primary);
+    border-color: rgba(37, 99, 235, 0.3);
+}
+
+/* Editor expandido inline para una fila ya guardada */
+.row-editor {
+    margin-top: 0.6rem;
+    padding: 0.85rem;
+    background: var(--surface-muted);
+    border: 1px solid var(--border);
+    border-radius: 0.75rem;
+    animation: detailsPanelIn 0.18s ease-out;
+}
+.row-editor-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    margin-top: 0.7rem;
+}
+.row-editor-btn {
+    font-size: 0.78rem;
+    font-weight: 600;
+    padding: 0.4rem 0.85rem;
+    border-radius: 0.5rem;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+    cursor: pointer;
+    transition: background-color 0.12s, border-color 0.12s;
+}
+.row-editor-btn:hover { background: var(--surface-muted); }
+.row-editor-btn.is-primary {
+    background: var(--primary);
+    color: #fff;
+    border-color: var(--primary);
+}
+.row-editor-btn.is-primary:hover { background: var(--primary-strong); border-color: var(--primary-strong); }
+
+/* Filas clicables: indica que se puede expandir */
+.trade-entry-row { cursor: pointer; }
+.trade-entry-row.is-expanded {
+    background: var(--surface-muted);
+    border-color: var(--border);
+}
+
+/* ========== Vista read-only del trade ========== */
+.row-view-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.7rem 0.9rem;
+}
+@media (min-width: 640px) {
+    .row-view-grid { grid-template-columns: repeat(4, 1fr); }
+}
+.row-view-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    min-width: 0;
+}
+.row-view-label {
+    font-size: 0.65rem;
+    font-weight: 600;
+    color: var(--muted-2);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+.row-view-value {
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+    word-break: break-word;
+}
+.view-value-green { color: var(--success); }
+.view-value-red   { color: var(--danger);  }
+.row-view-notes {
+    margin-top: 0.8rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+}
+.row-view-notes-text {
+    font-size: 0.85rem;
+    color: var(--text);
+    background: var(--surface);
+    padding: 0.55rem 0.7rem;
+    border-radius: 0.5rem;
+    border: 1px solid var(--border);
+    white-space: pre-wrap;
+    margin: 0;
+}
+
 /* Small responsive tweak */
 @media (max-width: 640px) { .auth-btn { padding: 0.5rem 0.75rem; font-size: 0.88rem; } }
 

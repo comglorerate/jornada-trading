@@ -422,12 +422,48 @@ function normalizeTradeEntry(item, idx, type) {
     const safeValue = Number(item && item.value);
     const value = Number.isFinite(safeValue) ? Math.abs(safeValue) : 0;
     const id = (item && (item.id || item.id === 0)) ? Number(item.id) : idx;
-    return {
+    const out = {
         id: Number.isFinite(id) ? id : idx,
         value,
         asset: (item && item.asset ? String(item.asset).trim().toUpperCase() : '---') || '---',
         type
     };
+    // Detalles opcionales: solo conservamos lo que esté presente y bien formado.
+    const det = sanitizeDetails(item && item.details);
+    if (det) out.details = det;
+    return out;
+}
+
+// Devuelve un objeto details "limpio" o null si está vacío.
+// Campos aceptados: leverage, entry, sl, targets[], notes.
+// Compatibilidad hacia atrás: acepta también t1/t2/t3 y los migra a targets.
+function sanitizeDetails(raw) {
+    if (!raw || typeof raw !== 'object') return null;
+    const out = {};
+
+    ['leverage', 'entry', 'sl'].forEach(k => {
+        const v = Number(raw[k]);
+        if (Number.isFinite(v) && v > 0) out[k] = v;
+    });
+
+    // Targets: preferir array `targets`. Si no existe, intentar t1, t2, ...
+    let targets = [];
+    if (Array.isArray(raw.targets)) {
+        targets = raw.targets.map(Number).filter(v => Number.isFinite(v) && v > 0);
+    } else {
+        for (let i = 1; i <= 99; i++) {
+            const v = Number(raw['t' + i]);
+            if (Number.isFinite(v) && v > 0) targets.push(v);
+            else if (raw['t' + i] === undefined) break; // no más slots t<i>
+        }
+    }
+    if (targets.length) out.targets = targets;
+
+    if (raw.notes != null) {
+        const n = String(raw.notes).trim().slice(0, 500);
+        if (n) out.notes = n;
+    }
+    return Object.keys(out).length ? out : null;
 }
 
 function normalizeJournalData(data) {
@@ -1278,14 +1314,110 @@ async function addEntry(type) {
         asset: asset || '---'
     };
 
+    // Detalles opcionales del panel expandible
+    const details = readAddDetailsPanel(type);
+    if (details) entry.details = details;
+
     if (type === 'tp') currentData.tps.push(entry);
     else currentData.sls.push(entry);
 
     input.value = '';
     if (assetInput) assetInput.value = '';
+    clearAddDetailsPanel(type);
     saveData();
     // Devolver foco al campo de activo para encadenar entradas rápido
     if (assetInput) assetInput.focus();
+}
+
+// Lee el panel "+ Detalles del trade" del formulario de alta y devuelve un
+// objeto details limpio (o null si no hay nada que guardar).
+function readAddDetailsPanel(type) {
+    const $ = (id) => document.getElementById(id);
+    const get = (suffix) => {
+        const el = $(`${type}-${suffix}`);
+        return el ? el.value : '';
+    };
+    const panel = document.getElementById(`${type}-details-panel`);
+    const targets = panel
+        ? Array.from(panel.querySelectorAll('.target-input')).map(el => Number(el.value)).filter(v => Number.isFinite(v) && v > 0)
+        : [];
+    const raw = {
+        leverage: get('leverage'),
+        entry: get('entry'),
+        sl: get('sl-price'),
+        notes: get('notes'),
+        targets
+    };
+    return sanitizeDetails(raw);
+}
+
+function clearAddDetailsPanel(type) {
+    const ids = ['leverage', 'entry', 'sl-price', 'notes'];
+    ids.forEach(suffix => {
+        const el = document.getElementById(`${type}-${suffix}`);
+        if (el) el.value = '';
+    });
+    // Resetear targets: dejar solo T1 vacío, eliminar slots adicionales que
+    // se hayan añadido dinámicamente.
+    const panel = document.getElementById(`${type}-details-panel`);
+    if (panel) {
+        const slots = panel.querySelectorAll('[data-target-slot]');
+        slots.forEach((slot, i) => {
+            if (i === 0) {
+                const input = slot.querySelector('input');
+                if (input) input.value = '';
+            } else {
+                slot.remove();
+            }
+        });
+    }
+    const addBtn = document.querySelector(`[data-add-target="${type}"]`);
+    if (addBtn) addBtn.classList.remove('hidden');
+}
+
+// Añade un nuevo slot de target al final del grid (sin límite).
+function addTargetSlot(type) {
+    const panel = document.getElementById(`${type}-details-panel`);
+    if (!panel) return;
+    const grid = panel.querySelector('.details-grid');
+    if (!grid) return;
+    const existing = grid.querySelectorAll('[data-target-slot]');
+    const next = existing.length + 1;
+
+    const newSlot = document.createElement('label');
+    newSlot.className = 'details-field';
+    newSlot.setAttribute('data-target-slot', '');
+    newSlot.setAttribute('data-target-index', String(next));
+    newSlot.innerHTML = `
+        <span>Target ${next}</span>
+        <input type="number" step="any" placeholder="0.00" class="details-input target-input" inputmode="decimal" />
+    `;
+
+    const lastSlot = existing[existing.length - 1];
+    if (lastSlot && lastSlot.parentNode) {
+        lastSlot.parentNode.insertBefore(newSlot, lastSlot.nextSibling);
+    } else {
+        grid.appendChild(newSlot);
+    }
+    const input = newSlot.querySelector('input');
+    if (input) try { input.focus(); } catch (e) { /* ignore */ }
+}
+
+function toggleAddDetails(type) {
+    const panel = document.getElementById(`${type}-details-panel`);
+    const btn = document.querySelector(`[data-details-toggle="${type}"]`);
+    if (!panel) return;
+    const willOpen = panel.classList.contains('hidden');
+    panel.classList.toggle('hidden', !willOpen);
+    if (btn) {
+        btn.classList.toggle('is-open', willOpen);
+        btn.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+    }
+    if (willOpen) {
+        // Auto-foco al primer campo del panel
+        const first = document.getElementById(`${type}-leverage`);
+        if (first) try { first.focus(); } catch (e) { /* ignore */ }
+    }
 }
 
 function deleteEntry(type, id) {
@@ -1304,38 +1436,128 @@ function deleteEntry(type, id) {
     }
 }
 
-// Inicio de edición inline: muestra input + botones
+// Construye el HTML del editor expandido para una fila ya guardada.
+function buildRowEditorHTML(type, id, item) {
+    const det = (item && item.details) || {};
+    const v = (x) => (x == null || x === '' ? '' : x);
+
+    // Targets: siempre mostrar al menos 1. Si la entrada tiene targets[],
+    // mostramos uno por cada valor. El usuario puede añadir más con el botón.
+    const savedTargets = Array.isArray(det.targets) ? det.targets : [];
+    const initialCount = Math.max(1, savedTargets.length);
+    let targetsHTML = '';
+    for (let i = 1; i <= initialCount; i++) {
+        const val = (i <= savedTargets.length) ? savedTargets[i - 1] : '';
+        targetsHTML += `
+            <label class="details-field" data-row-target-slot="${i}">
+                <span>Target ${i}</span>
+                <input type="number" step="any" class="details-input target-input" value="${v(val)}" inputmode="decimal" placeholder="0.00" />
+            </label>
+        `;
+    }
+
+    return `
+        <div class="details-grid">
+            <label class="details-field">
+                <span>Activo (par)</span>
+                <input type="text" class="details-input" data-field="asset" value="${(item.asset || '').replace(/"/g,'&quot;')}" placeholder="BTC" />
+            </label>
+            <label class="details-field">
+                <span>${type === 'tp' ? 'Ganancia ($)' : 'Pérdida ($)'}</span>
+                <input type="number" step="0.01" min="0.01" class="details-input" data-field="value" value="${Number(item.value || 0)}" inputmode="decimal" />
+            </label>
+            <label class="details-field">
+                <span>Apalancamiento</span>
+                <div class="details-input-wrap">
+                    <input type="number" step="1" min="1" class="details-input details-input-with-suffix" data-field="leverage" value="${v(det.leverage)}" inputmode="numeric" placeholder="0" />
+                    <span class="details-input-suffix">X</span>
+                </div>
+            </label>
+            <label class="details-field">
+                <span>Precio entrada</span>
+                <input type="number" step="any" class="details-input" data-field="entry" value="${v(det.entry)}" inputmode="decimal" placeholder="0.00" />
+            </label>
+            <label class="details-field">
+                <span>Stop Loss</span>
+                <input type="number" step="any" class="details-input" data-field="sl" value="${v(det.sl)}" inputmode="decimal" placeholder="0.00" />
+            </label>
+            ${targetsHTML}
+            <label class="details-field details-field-wide">
+                <span>Notas</span>
+                <textarea rows="2" class="details-input details-textarea" data-field="notes" maxlength="500" placeholder="Análisis, contexto, lección...">${(det.notes || '').replace(/</g,'&lt;')}</textarea>
+            </label>
+        </div>
+        <button type="button" class="details-add-target" data-row-add-target onclick="addRowTargetSlot('${type}', ${id})">
+            <i class="fa-solid fa-plus"></i> Añadir target
+        </button>
+        <div class="row-editor-actions">
+            <button type="button" class="row-editor-btn" onclick="cancelEdit('${type}', ${id})">Cancelar</button>
+            <button type="button" class="row-editor-btn is-primary" onclick="saveEdit('${type}', ${id})">Guardar</button>
+        </div>
+    `;
+}
+
+// Añade un nuevo slot de target al editor inline (sin límite).
+function addRowTargetSlot(type, id) {
+    const editor = document.getElementById(`row-editor-${type}-${id}`);
+    if (!editor) return;
+    const existing = editor.querySelectorAll('[data-row-target-slot]');
+    const next = existing.length + 1;
+
+    const newSlot = document.createElement('label');
+    newSlot.className = 'details-field';
+    newSlot.setAttribute('data-row-target-slot', String(next));
+    newSlot.innerHTML = `
+        <span>Target ${next}</span>
+        <input type="number" step="any" class="details-input target-input" inputmode="decimal" placeholder="0.00" />
+    `;
+
+    const lastSlot = existing[existing.length - 1];
+    if (lastSlot && lastSlot.parentNode) {
+        lastSlot.parentNode.insertBefore(newSlot, lastSlot.nextSibling);
+    } else {
+        const grid = editor.querySelector('.details-grid');
+        if (grid) grid.appendChild(newSlot);
+    }
+    const input = newSlot.querySelector('input');
+    if (input) try { input.focus(); } catch (e) { /* ignore */ }
+}
+
+// Abre el editor expandido inline para una fila concreta.
 function startEdit(type, id) {
-    // Cerrar cualquier editor abierto
-    document.querySelectorAll('.inline-editor').forEach(el => el.classList.add('hidden'));
-    document.querySelectorAll('.value-span').forEach(el => el.classList.remove('hidden'));
+    // Cerrar cualquier otro editor de fila abierto
+    document.querySelectorAll('.row-editor:not(.hidden)').forEach(el => {
+        el.classList.add('hidden');
+        el.innerHTML = '';
+    });
+    document.querySelectorAll('.trade-entry-row.is-expanded').forEach(el => el.classList.remove('is-expanded'));
 
-    const valueSpan = document.getElementById(`value-${type}-${id}`);
-    const editor = document.getElementById(`editor-${type}-${id}`);
-    if (!valueSpan || !editor) return;
+    const list = type === 'tp' ? currentData.tps : currentData.sls;
+    const item = list.find(i => i.id === id);
+    const editor = document.getElementById(`row-editor-${type}-${id}`);
+    if (!item || !editor) return;
 
-    valueSpan.classList.add('hidden');
+    editor.innerHTML = buildRowEditorHTML(type, id, item);
     editor.classList.remove('hidden');
-    const inputs = editor.querySelectorAll('input');
-    const assetInput = inputs[0];
-    const valueInput = inputs[1];
-    const assetSpan = document.getElementById(`asset-${type}-${id}`);
-    if (assetInput) {
-        assetInput.value = assetSpan ? assetSpan.innerText.trim() : '';
-    }
-    if (valueInput) {
-        valueInput.value = valueSpan.dataset.value || valueSpan.innerText.replace('%','').replace('+','').replace('-','').trim();
-        valueInput.focus();
-        valueInput.select();
-    }
+
+    // Marcar la fila como expandida (para el estilo visual)
+    const wrapper = editor.closest('.trade-entry-wrapper');
+    const row = wrapper && wrapper.querySelector('.trade-entry-row');
+    if (row) row.classList.add('is-expanded');
+
+    // Foco al primer campo
+    const firstInput = editor.querySelector('input, select, textarea');
+    if (firstInput) try { firstInput.focus(); firstInput.select && firstInput.select(); } catch (e) { /* ignore */ }
 }
 
 function cancelEdit(type, id) {
-    const valueSpan = document.getElementById(`value-${type}-${id}`);
-    const editor = document.getElementById(`editor-${type}-${id}`);
-    if (!valueSpan || !editor) return;
+    const editor = document.getElementById(`row-editor-${type}-${id}`);
+    if (!editor) return;
     editor.classList.add('hidden');
-    valueSpan.classList.remove('hidden');
+    editor.innerHTML = '';
+    const wrapper = editor.closest('.trade-entry-wrapper');
+    const row = wrapper && wrapper.querySelector('.trade-entry-row');
+    if (row) row.classList.remove('is-expanded');
 }
 
 function saveEdit(type, id) {
@@ -1343,26 +1565,42 @@ function saveEdit(type, id) {
     const item = list.find(i => i.id === id);
     if (!item) return;
 
-    const editor = document.getElementById(`editor-${type}-${id}`);
+    const editor = document.getElementById(`row-editor-${type}-${id}`);
     if (!editor) return;
-    const inputs = editor.querySelectorAll('input');
-    const assetInput = inputs[0];
-    const valueInput = inputs[1];
-    if (!valueInput) return;
 
-    const newValue = parseFloat(valueInput.value);
-    if (isNaN(newValue) || newValue <= 0) {
-        showToast('Porcentaje inválido', 'error');
+    const get = (field) => {
+        const el = editor.querySelector(`[data-field="${field}"]`);
+        return el ? el.value : '';
+    };
+
+    const newValue = parseFloat(get('value'));
+    if (!Number.isFinite(newValue) || newValue <= 0) {
+        showToast('Monto inválido', 'error');
+        return;
+    }
+    if (newValue > 1000000) {
+        showToast('Monto demasiado alto', 'error');
         return;
     }
 
-    // Actualizar asset si se proporcionó
-    if (assetInput) {
-        const newAsset = assetInput.value.trim().toUpperCase();
-        item.asset = newAsset || '---';
-    }
+    item.value = Math.round(newValue * 100) / 100;
+    item.asset = (get('asset') || '').trim().toUpperCase() || '---';
 
-    item.value = newValue;
+    const targets = Array.from(editor.querySelectorAll('.target-input'))
+        .map(el => Number(el.value))
+        .filter(v => Number.isFinite(v) && v > 0);
+
+    const det = sanitizeDetails({
+        leverage: get('leverage'),
+        entry: get('entry'),
+        sl: get('sl'),
+        notes: get('notes'),
+        targets
+    });
+    if (det) item.details = det;
+    else delete item.details;
+
+    cancelEdit(type, id);
     saveData();
 }
 
@@ -1493,28 +1731,135 @@ function renderList(type, list) {
         const safeValue = Number(item && item.value);
         const valueNum = Number.isFinite(safeValue) ? safeValue : 0;
         const safeAsset = (item && item.asset) ? String(item.asset) : '---';
-        const row = document.createElement('div');
-        row.dataset.entryId = item.id;
-        row.dataset.entryType = type;
-        row.className = "trade-entry-row flex justify-between items-center py-2 px-3 rounded hover:bg-slate-50 dark:hover:bg-slate-700/50 border border-transparent hover:border-slate-100 dark:hover:border-slate-600 transition group";
-        row.innerHTML = `
-            <div class="flex items-center gap-3">
-                <span id="asset-${type}-${item.id}" class="font-bold text-slate-700 dark:text-slate-200 text-xs bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 rounded">${safeAsset}</span>
-                <span id="value-${type}-${item.id}" data-value="${valueNum}" class="value-span font-bold ${valueColor} text-sm tabular-nums">${sign}$${valueNum.toFixed(2)}</span>
-                <div id="editor-${type}-${item.id}" class="inline-editor hidden flex items-center gap-2">
-                    <input type="text" class="w-20 px-2 py-1 rounded text-sm border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100" placeholder="PAR" />
-                    <input type="number" step="0.01" min="0.01" class="w-20 px-2 py-1 rounded text-sm border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100" />
-                    <button onclick="saveEdit('${type}', ${item.id})" title="Guardar" class="text-black dark:text-white bg-slate-200 dark:bg-slate-700 px-2 py-1 rounded"><i class="fa-solid fa-floppy-disk"></i></button>
-                    <button onclick="cancelEdit('${type}', ${item.id})" title="Cancelar" class="text-slate-500 px-2 py-1 rounded"><i class="fa-solid fa-xmark"></i></button>
+        const hasDetails = !!(item && item.details && Object.keys(item.details).length);
+
+        const wrapper = document.createElement('div');
+        wrapper.dataset.entryId = item.id;
+        wrapper.dataset.entryType = type;
+        wrapper.className = 'trade-entry-wrapper';
+
+        wrapper.innerHTML = `
+            <div class="trade-entry-row flex justify-between items-center py-2 px-3 rounded hover:bg-slate-50 dark:hover:bg-slate-700/50 border border-transparent hover:border-slate-100 dark:hover:border-slate-600 transition group"
+                 onclick="onRowClick(event, '${type}', ${item.id})">
+                <div class="flex items-center gap-3 min-w-0 flex-1">
+                    <span id="asset-${type}-${item.id}" class="font-bold text-slate-700 dark:text-slate-200 text-xs bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 rounded">${safeAsset}</span>
+                    <span id="value-${type}-${item.id}" data-value="${valueNum}" class="value-span font-bold ${valueColor} text-sm tabular-nums">${sign}$${valueNum.toFixed(2)}</span>
+                    <span class="entry-details-badge ${hasDetails ? 'has-details' : ''}" title="${hasDetails ? 'Tiene detalles' : 'Sin detalles'}">
+                        <i class="fa-solid ${hasDetails ? 'fa-circle-info' : 'fa-ellipsis'}"></i>
+                    </span>
+                </div>
+                <div class="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity" onclick="event.stopPropagation()">
+                    <button onclick="deleteEntry('${type}', ${item.id})" title="Eliminar" class="entry-action-btn entry-delete text-red-300 hover:text-red-500 text-xs"><i class="fa-solid fa-xmark"></i></button>
                 </div>
             </div>
-            <div class="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                <button onclick="startEdit('${type}', ${item.id})" title="Editar" class="entry-action-btn entry-edit text-slate-400 hover:text-slate-50 text-xs"><i class="fa-solid fa-pen-to-square"></i></button>
-                <button onclick="deleteEntry('${type}', ${item.id})" title="Eliminar" class="entry-action-btn entry-delete text-red-300 hover:text-red-500 text-xs"><i class="fa-solid fa-xmark"></i></button>
-            </div>
+            <div id="row-editor-${type}-${item.id}" class="row-editor hidden"></div>
         `;
-        container.appendChild(row);
+        container.appendChild(wrapper);
     });
+}
+
+// Click en cualquier parte de la fila (excepto los botones de acción) → toggle vista (read-only).
+// Para editar, el usuario debe pulsar el botón ✎ explícitamente.
+function onRowClick(event, type, id) {
+    const target = event.target;
+    if (target && target.closest && target.closest('.entry-action-btn')) return;
+    const editor = document.getElementById(`row-editor-${type}-${id}`);
+    if (!editor) return;
+    if (editor.classList.contains('hidden')) {
+        viewRow(type, id);
+    } else {
+        cancelEdit(type, id);
+    }
+}
+
+// Abre el panel de la fila en modo solo-lectura (vista).
+function viewRow(type, id) {
+    document.querySelectorAll('.row-editor:not(.hidden)').forEach(el => {
+        el.classList.add('hidden');
+        el.innerHTML = '';
+    });
+    document.querySelectorAll('.trade-entry-row.is-expanded').forEach(el => el.classList.remove('is-expanded'));
+
+    const list = type === 'tp' ? currentData.tps : currentData.sls;
+    const item = list.find(i => i.id === id);
+    const editor = document.getElementById(`row-editor-${type}-${id}`);
+    if (!item || !editor) return;
+
+    // Si la entrada no tiene detalles guardados, no hay nada que mostrar — abrir
+    // directamente el editor para que el usuario pueda añadir información.
+    const hasDetails = item.details && Object.keys(item.details).length > 0;
+    if (!hasDetails) {
+        startEdit(type, id);
+        return;
+    }
+
+    editor.innerHTML = buildRowViewHTML(type, id, item);
+    editor.classList.remove('hidden');
+    const wrapper = editor.closest('.trade-entry-wrapper');
+    const row = wrapper && wrapper.querySelector('.trade-entry-row');
+    if (row) row.classList.add('is-expanded');
+}
+
+// HTML de la vista solo-lectura.
+function buildRowViewHTML(type, id, item) {
+    const det = (item && item.details) || {};
+    const targets = Array.isArray(det.targets) ? det.targets : [];
+    const isTP = type === 'tp';
+    const sign = isTP ? '+' : '-';
+    const valueColorClass = isTP ? 'view-value-green' : 'view-value-red';
+
+    const items = [];
+    items.push({ label: 'Activo', value: item.asset || '---' });
+    items.push({
+        label: isTP ? 'Ganancia' : 'Pérdida',
+        value: `${sign}$${Number(item.value || 0).toFixed(2)}`,
+        cls: valueColorClass
+    });
+    if (det.leverage) items.push({ label: 'Apalancamiento', value: `${det.leverage}X` });
+    if (det.entry) items.push({ label: 'Precio entrada', value: formatPrice(det.entry) });
+    if (det.sl) items.push({ label: 'Stop Loss', value: formatPrice(det.sl) });
+    targets.forEach((t, i) => items.push({ label: `Target ${i + 1}`, value: formatPrice(t) }));
+
+    const itemsHTML = items.map(it => `
+        <div class="row-view-item">
+            <span class="row-view-label">${escapeHTML(it.label)}</span>
+            <span class="row-view-value ${it.cls || ''}">${escapeHTML(it.value)}</span>
+        </div>
+    `).join('');
+
+    const notesHTML = det.notes ? `
+        <div class="row-view-notes">
+            <span class="row-view-label">Notas</span>
+            <p class="row-view-notes-text">${escapeHTML(det.notes)}</p>
+        </div>
+    ` : '';
+
+    return `
+        <div class="row-view-grid">${itemsHTML}</div>
+        ${notesHTML}
+        <div class="row-editor-actions">
+            <button type="button" class="row-editor-btn" onclick="cancelEdit('${type}', ${id})">Cerrar</button>
+            <button type="button" class="row-editor-btn is-primary" onclick="startEdit('${type}', ${id})">
+                <i class="fa-solid fa-pen-to-square"></i> Editar
+            </button>
+        </div>
+    `;
+}
+
+// Formatea un precio numérico para mostrar (sin "X" — ese se añade manualmente).
+function formatPrice(n) {
+    const num = Number(n);
+    if (!Number.isFinite(num)) return '—';
+    // Hasta 8 decimales para criptos pequeñas, sin ceros innecesarios.
+    return num.toLocaleString('es-PE', { maximumFractionDigits: 8 });
+}
+
+function escapeHTML(s) {
+    return String(s == null ? '' : s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
 }
 
 function bumpIfChanged(el, newText) {

@@ -286,13 +286,48 @@
             </div>
             <div class="panel-body">
                 <!-- Inputs: Activo (50%) + Porcentaje (37%) + Botón cuadrado (+) -->
-                <div class="trade-row mb-6">
+                <div class="trade-row mb-3">
                     <input type="text" id="tp-asset" placeholder="Activo (BTC)"
                         class="custom-input trade-asset px-3 py-2 rounded text-sm placeholder-slate-400 uppercase font-bold" inputmode="text">
                     <input type="number" step="0.01" min="0.01" id="tp-input" placeholder="$ 0.00"
                         class="custom-input trade-pct px-3 py-2 rounded text-sm placeholder-slate-400" inputmode="decimal">
                     <button onclick="addEntry('tp')" class="trade-add-btn" aria-label="Agregar Take Profit">
                         <i class="fa-solid fa-plus"></i>
+                    </button>
+                </div>
+
+                <button type="button" data-details-toggle="tp" onclick="toggleAddDetails('tp')" class="details-toggle mb-3" aria-expanded="false">
+                    <i class="fa-solid fa-chevron-down details-toggle-chevron"></i>
+                    <span>Detalles del trade (opcional)</span>
+                </button>
+                <div id="tp-details-panel" class="details-panel hidden mb-4">
+                    <div class="details-grid">
+                        <label class="details-field">
+                            <span>Apalancamiento</span>
+                            <div class="details-input-wrap">
+                                <input id="tp-leverage" type="number" step="1" min="1" placeholder="0" class="details-input details-input-with-suffix" inputmode="numeric" />
+                                <span class="details-input-suffix">X</span>
+                            </div>
+                        </label>
+                        <label class="details-field">
+                            <span>Precio entrada</span>
+                            <input id="tp-entry" type="number" step="any" placeholder="0.00" class="details-input" inputmode="decimal" />
+                        </label>
+                        <label class="details-field">
+                            <span>Stop Loss</span>
+                            <input id="tp-sl-price" type="number" step="any" placeholder="0.00" class="details-input" inputmode="decimal" />
+                        </label>
+                        <label class="details-field" data-target-slot data-target-index="1">
+                            <span>Target 1</span>
+                            <input type="number" step="any" placeholder="0.00" class="details-input target-input" inputmode="decimal" />
+                        </label>
+                        <label class="details-field details-field-wide">
+                            <span>Notas</span>
+                            <textarea id="tp-notes" rows="2" placeholder="Análisis, contexto, etc." class="details-input details-textarea" maxlength="500"></textarea>
+                        </label>
+                    </div>
+                    <button type="button" class="details-add-target" data-add-target="tp" onclick="addTargetSlot('tp')">
+                        <i class="fa-solid fa-plus"></i> Añadir target
                     </button>
                 </div>
 
@@ -316,13 +351,48 @@
                 <h2 class="font-bold text-red-700 dark:text-red-400">Stop Loss</h2>
             </div>
             <div class="panel-body">
-                <div class="trade-row mb-6">
+                <div class="trade-row mb-3">
                     <input type="text" id="sl-asset" placeholder="Activo (BTC)"
                         class="custom-input trade-asset px-3 py-2 rounded text-sm placeholder-slate-400 uppercase font-bold" inputmode="text">
                     <input type="number" step="0.01" min="0.01" id="sl-input" placeholder="$ 0.00"
                         class="custom-input trade-pct px-3 py-2 rounded text-sm placeholder-slate-400" inputmode="decimal">
                     <button onclick="addEntry('sl')" class="trade-add-btn" aria-label="Agregar Stop Loss">
                         <i class="fa-solid fa-plus"></i>
+                    </button>
+                </div>
+
+                <button type="button" data-details-toggle="sl" onclick="toggleAddDetails('sl')" class="details-toggle mb-3" aria-expanded="false">
+                    <i class="fa-solid fa-chevron-down details-toggle-chevron"></i>
+                    <span>Detalles del trade (opcional)</span>
+                </button>
+                <div id="sl-details-panel" class="details-panel hidden mb-4">
+                    <div class="details-grid">
+                        <label class="details-field">
+                            <span>Apalancamiento</span>
+                            <div class="details-input-wrap">
+                                <input id="sl-leverage" type="number" step="1" min="1" placeholder="0" class="details-input details-input-with-suffix" inputmode="numeric" />
+                                <span class="details-input-suffix">X</span>
+                            </div>
+                        </label>
+                        <label class="details-field">
+                            <span>Precio entrada</span>
+                            <input id="sl-entry" type="number" step="any" placeholder="0.00" class="details-input" inputmode="decimal" />
+                        </label>
+                        <label class="details-field">
+                            <span>Stop Loss</span>
+                            <input id="sl-sl-price" type="number" step="any" placeholder="0.00" class="details-input" inputmode="decimal" />
+                        </label>
+                        <label class="details-field" data-target-slot data-target-index="1">
+                            <span>Target 1</span>
+                            <input type="number" step="any" placeholder="0.00" class="details-input target-input" inputmode="decimal" />
+                        </label>
+                        <label class="details-field details-field-wide">
+                            <span>Notas</span>
+                            <textarea id="sl-notes" rows="2" placeholder="Qué falló, lección aprendida, etc." class="details-input details-textarea" maxlength="500"></textarea>
+                        </label>
+                    </div>
+                    <button type="button" class="details-add-target" data-add-target="sl" onclick="addTargetSlot('sl')">
+                        <i class="fa-solid fa-plus"></i> Añadir target
                     </button>
                 </div>
 
