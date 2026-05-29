@@ -5,10 +5,10 @@
     --bg-alt: #e8edf5;
     --surface: #ffffff;
     --surface-muted: #f8fafc;
-    --primary: #2563eb;
-    --primary-strong: #1d4ed8;
-    --danger: #dc2626;
-    --success: #16a34a;
+    --primary: #0d9488;
+    --primary-strong: #0f766e;
+    --danger: #e11d48;
+    --success: #059669;
     --text: #0f172a;
     --muted: #475569;
     --muted-2: #64748b;
@@ -21,18 +21,18 @@
 
 /* Dark mode: tres niveles de elevación claramente diferenciados */
 .dark {
-    --bg: #060912;            /* fondo más oscuro: pozo */
-    --bg-alt: #0a1020;
-    --surface: #111827;       /* tarjetas: una capa arriba del fondo */
-    --surface-muted: #1a2434; /* sub-tarjetas / inputs: otra capa arriba */
-    --primary: #60a5fa;
-    --primary-strong: #3b82f6;
-    --danger: #f87171;
-    --success: #4ade80;
-    --text: #f1f5f9;
-    --muted: #cbd5e1;
-    --muted-2: #94a3b8;
-    --border: #1f2937;
+    --bg: #0a1322;            /* fondo más oscuro: pozo */
+    --bg-alt: #0c1628;
+    --surface: #15203a;       /* tarjetas: una capa arriba del fondo */
+    --surface-muted: #1b2a49; /* sub-tarjetas / inputs: otra capa arriba */
+    --primary: #2dd4bf;
+    --primary-strong: #14b8a6;
+    --danger: #fb7185;
+    --success: #34d399;
+    --text: #eaf1fb;
+    --muted: #c4d0e6;
+    --muted-2: #8593b2;
+    --border: #26375c;
     --shadow-soft: 0 14px 30px rgba(0, 0, 0, 0.55);
     --shadow-card: 0 22px 50px rgba(0, 0, 0, 0.65);
 }
@@ -42,8 +42,8 @@
 body {
     font-family: 'Inter', sans-serif;
     background:
-        radial-gradient(circle at 20% 20%, rgba(37, 99, 235, 0.06), transparent 35%),
-        radial-gradient(circle at 80% 0%, rgba(14, 165, 233, 0.08), transparent 30%),
+        radial-gradient(circle at 20% 20%, rgba(13, 148, 136, 0.06), transparent 35%),
+        radial-gradient(circle at 80% 0%, rgba(167, 139, 250, 0.08), transparent 30%),
         var(--bg);
     color: var(--muted);
     transition: background-color 0.3s, color 0.3s;
@@ -54,8 +54,8 @@ body {
 
 .dark body {
     background:
-        radial-gradient(circle at 25% -10%, rgba(96, 165, 250, 0.10), transparent 40%),
-        radial-gradient(circle at 90% 10%, rgba(14, 165, 233, 0.06), transparent 35%),
+        radial-gradient(circle at 25% -10%, rgba(45, 212, 191, 0.10), transparent 40%),
+        radial-gradient(circle at 90% 10%, rgba(167, 139, 250, 0.07), transparent 35%),
         var(--bg);
 }
 
@@ -1186,6 +1186,27 @@ button:focus-visible {
 }
 
 /* Estilos para botones de acción dentro de cada entrada (editar / eliminar) */
+/* Botones de acción de cada fila: ocultos hasta seleccionar la fila */
+.entry-actions {
+    opacity: 0;
+    pointer-events: none;
+    transform: translateX(6px);
+    transition: opacity 0.15s ease, transform 0.15s ease;
+}
+.trade-entry-row.show-actions .entry-actions,
+.trade-entry-row.is-expanded .entry-actions {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translateX(0);
+}
+@media (hover: hover) {
+    .trade-entry-row:hover .entry-actions { opacity: 1; pointer-events: auto; transform: translateX(0); }
+}
+.trade-entry-row.show-actions {
+    background: rgba(45, 212, 191, 0.06);
+    border-color: rgba(45, 212, 191, 0.25) !important;
+}
+
 .entry-action-btn {
     width: 36px;
     height: 36px;

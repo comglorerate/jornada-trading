@@ -40,6 +40,23 @@
     <script>
         tailwind.config = {
             darkMode: 'class', // Activar modo oscuro manual
+            theme: {
+                extend: {
+                    colors: {
+                        // Acento de marca "Aqua Deep": el azul pasa a teal
+                        blue: {
+                            50:  '#effdfb', 100: '#cdf7f0', 200: '#9eeee2',
+                            300: '#5fe0d0', 400: '#34e0cb', 500: '#2dd4bf',
+                            600: '#14b8a6', 700: '#0d9488', 800: '#115e58',
+                            900: '#134e4a', 950: '#042f2e'
+                        },
+                        // Fondo/superficies oscuras alineadas con las otras apps
+                        slate: {
+                            700: '#1b2a49', 800: '#15203a', 900: '#0c1628', 950: '#0a1322'
+                        }
+                    }
+                }
+            }
         }
     </script>
     <style>
