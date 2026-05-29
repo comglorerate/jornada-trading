@@ -10,7 +10,7 @@ import {
   updateDoc,
   onSnapshot
 } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-firestore.js";
-import { getAuth, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut, createUserWithEmailAndPassword, signInWithEmailAndPassword, sendPasswordResetEmail, setPersistence, browserLocalPersistence  } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-auth.js";
+import { getAuth, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signInWithCredential, signOut, createUserWithEmailAndPassword, signInWithEmailAndPassword, sendPasswordResetEmail, setPersistence, browserLocalPersistence  } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-auth.js";
 
 // CONFIG: reemplaza si necesitas valores distintos (copiado desde Firebase Console)
 const firebaseConfig = {
@@ -76,12 +76,52 @@ window.ensureFirestoreOnline = async function() {
 // Google Auth helpers (expuestos en window)
 const googleProvider = new GoogleAuthProvider();
 
-window.signInWithGoogle = async function() {
+// Dentro de la app Android (WebView) Google bloquea el OAuth por popup
+// (error 403 disallowed_useragent). Usamos el puente nativo (Credential Manager):
+// el código nativo obtiene un ID token de Google y lo entregamos a Firebase
+// mediante signInWithCredential. En la web normal seguimos usando el popup.
+let __nativeGooglePending = null;
+
+window.__onGoogleIdToken = async function(idToken) {
   try {
     const a = window._firebase.auth;
-    if (!a) throw new Error('Auth no inicializado');
-    // Abrir popup para iniciar sesión con Google. No linkeamos cuentas anónimas
-    // porque la lógica de usuarios anónimos fue eliminada.
+    const cred = GoogleAuthProvider.credential(idToken);
+    await signInWithCredential(a, cred);
+    console.log('Inicio de sesión con Google (nativo) completado.');
+    if (__nativeGooglePending) { __nativeGooglePending.resolve(); }
+  } catch (err) {
+    console.error('Error signInWithCredential:', err);
+    if (__nativeGooglePending) { __nativeGooglePending.reject(err); }
+  } finally {
+    __nativeGooglePending = null;
+  }
+};
+
+window.__onGoogleIdTokenError = function(message) {
+  console.error('Error Google nativo:', message);
+  if (__nativeGooglePending) { __nativeGooglePending.reject(new Error(message)); }
+  __nativeGooglePending = null;
+};
+
+window.signInWithGoogle = async function() {
+  const a = window._firebase.auth;
+  if (!a) throw new Error('Auth no inicializado');
+
+  // Puente nativo disponible (app Android): usar Credential Manager.
+  if (window.AndroidAuth && typeof window.AndroidAuth.googleSignIn === 'function') {
+    return new Promise((resolve, reject) => {
+      __nativeGooglePending = { resolve, reject };
+      try {
+        window.AndroidAuth.googleSignIn();
+      } catch (err) {
+        __nativeGooglePending = null;
+        reject(err);
+      }
+    });
+  }
+
+  // Navegador web normal: popup OAuth.
+  try {
     await signInWithPopup(a, googleProvider);
     console.log('Inicio de sesión con Google completado.');
   } catch (err) {

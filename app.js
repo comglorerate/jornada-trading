@@ -1323,7 +1323,7 @@ async function migrateLocalToFirestore(confirmIfNeeded = true) {
     }
 
     if (confirmIfNeeded) {
-        const ok = await showConfirmModal(`Se encontraron ${localDates.length} día(s) con datos en este navegador. ¿Deseas subirlos a tu cuenta en la nube?`);
+        const ok = await showConfirmModal(`Se encontraron ${localDates.length} día(s) con datos en este dispositivo. ¿Deseas subirlos a tu cuenta en la nube?`);
         if (!ok) return;
     }
 
@@ -1569,12 +1569,20 @@ function toggleAddDetails(type) {
     }
 }
 
-function deleteEntry(type, id) {
+async function deleteEntry(type, id) {
+    // Confirmación antes de eliminar (acción no reversible)
+    const label = type === 'tp' ? 'este Take Profit' : 'este Stop Loss';
+    const ok = await showConfirmModal(`¿Eliminar ${label}? Esta acción no se puede deshacer.`);
+    if (!ok) return;
+
     // Animar salida si la fila está visible, luego borrar
     const row = document.querySelector(`[data-entry-id="${id}"][data-entry-type="${type}"]`);
     const finalize = () => {
         if (type === 'tp') currentData.tps = currentData.tps.filter(item => item.id !== id);
         else currentData.sls = currentData.sls.filter(item => item.id !== id);
+        // Quitar el elemento del DOM directamente: si hay un editor abierto,
+        // renderUI() no rehace las listas, así que el borrado debe reflejarse aquí.
+        if (row && row.parentNode) row.remove();
         saveData();
     };
     if (row) {
@@ -1678,6 +1686,16 @@ function addRowTargetSlot(type, id) {
     }
     const input = newSlot.querySelector('input');
     if (input) try { input.focus(); } catch (e) { /* ignore */ }
+}
+
+// Alterna el editor: si está abierto lo cierra, si no lo abre.
+function toggleEdit(type, id) {
+    const editor = document.getElementById(`row-editor-${type}-${id}`);
+    if (editor && !editor.classList.contains('hidden')) {
+        cancelEdit(type, id);
+    } else {
+        startEdit(type, id);
+    }
 }
 
 // Abre el editor expandido inline para una fila concreta.
@@ -1828,7 +1846,7 @@ async function clearAll() {
 
     // No volver a guardar datos vacíos localmente; en su lugar, forzar recarga desde Firestore tras eliminar en la nube
 
-    showToast(removedLocal > 0 ? `Eliminados ${removedLocal} día(s) en este navegador` : 'No se encontraron datos locales', 'success', 2200);
+    showToast(removedLocal > 0 ? `Eliminados ${removedLocal} día(s) en este dispositivo` : 'No se encontraron datos locales', 'success', 2200);
 
     // 2) Si estamos autenticados, intentar eliminar documentos en Firestore
     try {
@@ -1940,8 +1958,9 @@ function renderList(type, list) {
                         <i class="fa-solid ${hasDetails ? 'fa-circle-info' : 'fa-ellipsis'}"></i>
                     </span>
                 </div>
-                <div class="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity" onclick="event.stopPropagation()">
-                    <button onclick="deleteEntry('${type}', ${item.id})" title="Eliminar" class="entry-action-btn entry-delete text-red-300 hover:text-red-500 text-xs"><i class="fa-solid fa-xmark"></i></button>
+                <div class="entry-actions flex gap-3 items-center" onclick="event.stopPropagation()">
+                    <button onclick="toggleEdit('${type}', ${item.id})" title="Editar" class="entry-action-btn entry-edit text-slate-400 hover:text-teal-400 text-sm"><i class="fa-solid fa-gear"></i></button>
+                    <button onclick="deleteEntry('${type}', ${item.id})" title="Eliminar" class="entry-action-btn entry-delete text-red-300 hover:text-red-500 text-sm"><i class="fa-solid fa-xmark"></i></button>
                 </div>
             </div>
             <div id="row-editor-${type}-${item.id}" class="row-editor hidden"></div>
@@ -1955,13 +1974,22 @@ function renderList(type, list) {
 function onRowClick(event, type, id) {
     const target = event.target;
     if (target && target.closest && target.closest('.entry-action-btn')) return;
+
+    const wrapper = document.querySelector(`[data-entry-id="${id}"][data-entry-type="${type}"]`);
+    const row = wrapper && wrapper.querySelector('.trade-entry-row');
+    if (!row) return;
+
+    // Si el editor está abierto, tocar la barra NO lo cierra (solo el engranaje lo hace).
     const editor = document.getElementById(`row-editor-${type}-${id}`);
-    if (!editor) return;
-    if (editor.classList.contains('hidden')) {
-        viewRow(type, id);
-    } else {
-        cancelEdit(type, id);
+    if (editor && !editor.classList.contains('hidden')) {
+        return;
     }
+
+    // Mostrar/ocultar los botones de acción (x / engranaje). Cerramos los de otras filas.
+    const wasOpen = row.classList.contains('show-actions');
+    document.querySelectorAll('.trade-entry-row.show-actions')
+        .forEach(el => el.classList.remove('show-actions'));
+    if (!wasOpen) row.classList.add('show-actions');
 }
 
 // Abre el panel de la fila en modo solo-lectura (vista).
