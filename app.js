@@ -60,6 +60,9 @@ function localDateKey(date) {
 }
 
 let currentData = { tps: [], sls: [] };
+// Estado de expandir/colapsar listas largas (declarado arriba para evitar TDZ:
+// renderList puede ejecutarse antes de llegar a su definición).
+let __listExpanded = { tp: false, sl: false };
 function normalizeCurrentData() {
     if (!currentData || typeof currentData !== 'object') currentData = { tps: [], sls: [] };
     if (!Array.isArray(currentData.tps)) currentData.tps = [];
@@ -2009,7 +2012,6 @@ function renderUI() {
     updateTotals();
 }
 
-let __listExpanded = { tp: false, sl: false };
 window.toggleListExpand = function (type) {
     __listExpanded[type] = !__listExpanded[type];
     renderList(type, type === 'tp' ? currentData.tps : currentData.sls);
