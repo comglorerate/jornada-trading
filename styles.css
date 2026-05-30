@@ -1307,4 +1307,9 @@ html.in-app #auth-controls,
 html.in-app #auth-cta-register-mobile,
 html.in-app #auth-cta-login-mobile,
 html.in-app #btn-signout-mobile,
-html.in-app #mobile-menu .mm-divider { display: none !important; }
+html.in-app #mobile-menu .mm-divider,
+/* Tema y menú: gestionados a nivel de app (el toggle vive en el Home) */
+html.in-app #theme-toggle-desktop,
+html.in-app #theme-toggle-mobile,
+html.in-app #mobile-hamburger,
+html.in-app #mobile-menu { display: none !important; }
