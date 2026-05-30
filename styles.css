@@ -90,7 +90,9 @@ p { color: var(--muted-2); line-height: 1.6; }
 }
 
 .sub-surface {
-    background: var(--surface-muted);
+    /* Tono "hundido" (distinto al de la tarjeta muted-card) para que los tiles
+       se lean como tiles de forma consistente en Balance y Estadísticas. */
+    background: var(--surface);
     border: 1px solid var(--border);
     border-radius: var(--radius-md);
 }
