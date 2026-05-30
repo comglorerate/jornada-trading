@@ -2009,6 +2009,12 @@ function renderUI() {
     updateTotals();
 }
 
+let __listExpanded = { tp: false, sl: false };
+window.toggleListExpand = function (type) {
+    __listExpanded[type] = !__listExpanded[type];
+    renderList(type, type === 'tp' ? currentData.tps : currentData.sls);
+};
+
 function renderList(type, list) {
     const container = document.getElementById(type === 'tp' ? 'tp-list' : 'sl-list');
     container.innerHTML = '';
@@ -2021,7 +2027,13 @@ function renderList(type, list) {
     const valueColor = type === 'tp' ? 'text-green-500 dark:text-green-400' : 'text-red-500 dark:text-red-400';
     const sign = type === 'tp' ? '+' : '-';
 
-    list.forEach(item => {
+    // Colapsar listas largas: muestra las más recientes + botón "Ver todos".
+    const COLLAPSE_AT = 4;
+    const expanded = !!__listExpanded[type];
+    const collapsed = list.length > COLLAPSE_AT && !expanded;
+    const visible = collapsed ? list.slice(-COLLAPSE_AT) : list;
+
+    visible.forEach(item => {
         const safeValue = Number(item && item.value);
         const valueNum = Number.isFinite(safeValue) ? safeValue : 0;
         const safeAsset = (item && item.asset) ? String(item.asset) : '---';
@@ -2055,6 +2067,17 @@ function renderList(type, list) {
         `;
         container.appendChild(wrapper);
     });
+
+    if (list.length > COLLAPSE_AT) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'list-expand-btn w-full mt-2 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-slate-700/50 rounded py-2 transition flex items-center justify-center gap-1.5';
+        btn.setAttribute('onclick', `toggleListExpand('${type}')`);
+        btn.innerHTML = expanded
+            ? '<i class="fa-solid fa-chevron-up"></i> Ver menos'
+            : `<i class="fa-solid fa-chevron-down"></i> Ver todos (${list.length})`;
+        container.appendChild(btn);
+    }
 }
 
 // Click en cualquier parte de la fila (excepto los botones de acción) → toggle vista (read-only).
