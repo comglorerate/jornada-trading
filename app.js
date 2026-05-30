@@ -787,6 +787,94 @@ async function recalcCapitalTimeline() {
         __isCalculatingCapital = false;
         renderCapitalDisplays(getCurrentNet());
         try { renderCapitalSparkline(); } catch (e) { console.warn('Error renderizando sparkline', e); }
+        try { renderStatsUI(); } catch (e) { console.warn('Error renderizando estadísticas', e); }
+    }
+}
+
+// ==================== ESTADÍSTICAS ====================
+function __pad2(n) { return n < 10 ? '0' + n : '' + n; }
+
+function computeStats(map) {
+    const keys = Object.keys(map || {}).sort();
+    let grossProfit = 0, grossLoss = 0, wins = 0, losses = 0, bestTrade = 0, worstTrade = 0;
+    const dayNets = [];
+    const perDay = {};
+    for (const k of keys) {
+        const d = map[k]; if (!d) continue;
+        const tps = d.tps || [], sls = d.sls || [];
+        let tpSum = 0, slSum = 0;
+        tps.forEach(t => { const v = Number(t.value) || 0; tpSum += v; if (v > bestTrade) bestTrade = v; });
+        sls.forEach(s => { const v = Number(s.value) || 0; slSum += v; if (v > worstTrade) worstTrade = v; });
+        grossProfit += tpSum; grossLoss += slSum; wins += tps.length; losses += sls.length;
+        if (tps.length || sls.length) {
+            const net = tpSum - slSum;
+            dayNets.push({ dateKey: k, net });
+            perDay[k] = net;
+        }
+    }
+    const totalTrades = wins + losses;
+    const net = grossProfit - grossLoss;
+    const winRate = totalTrades ? (wins / totalTrades * 100) : 0;
+    const profitFactor = grossLoss > 0 ? (grossProfit / grossLoss) : (grossProfit > 0 ? Infinity : 0);
+    const avgWin = wins ? grossProfit / wins : 0;
+    const avgLoss = losses ? grossLoss / losses : 0;
+    const greenDays = dayNets.filter(d => d.net > 0).length;
+    const redDays = dayNets.filter(d => d.net < 0).length;
+    let streak = 0, streakSign = 0;
+    for (let i = dayNets.length - 1; i >= 0; i--) {
+        const sg = Math.sign(dayNets[i].net);
+        if (sg === 0) continue;
+        if (streak === 0) { streakSign = sg; streak = 1; }
+        else if (sg === streakSign) streak++;
+        else break;
+    }
+    let bestDay = null, worstDay = null;
+    dayNets.forEach(d => {
+        if (!bestDay || d.net > bestDay.net) bestDay = d;
+        if (!worstDay || d.net < worstDay.net) worstDay = d;
+    });
+    return {
+        grossProfit, grossLoss, net, wins, losses, totalTrades, winRate, profitFactor,
+        avgWin, avgLoss, greenDays, redDays, streak, streakSign, bestTrade, worstTrade,
+        bestDay, worstDay, perDay, daysCount: dayNets.length
+    };
+}
+
+// Abre el "Resumen Mensual" existente (calendario detallado) desde el scoreboard.
+window.openMonthlySummaries = function () {
+    const sec = document.getElementById('summaries-section');
+    if (!sec) return;
+    if (sec.classList.contains('hidden')) { try { toggleSummaries(); } catch (e) { /* ignore */ } }
+    setTimeout(() => { try { sec.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (e) { /* ignore */ } }, 150);
+};
+
+function renderStatsUI() {
+    const kpiEl = document.getElementById('stats-kpis');
+    if (!kpiEl) return;
+    const s = computeStats(__lastJournalsCache || {});
+    const mode = getDisplayMode();
+    const money = (v) => mode === 'percent' ? `${v.toFixed(2)}%` : `$${(Math.round(v * 100) / 100).toFixed(2)}`;
+    const signMoney = (v) => (v > 0 ? '+' : '') + money(v);
+    const pf = s.profitFactor === Infinity ? '∞' : s.profitFactor.toFixed(2);
+    const netColor = s.net > 0 ? 'text-green-600 dark:text-green-400' : (s.net < 0 ? 'text-red-600 dark:text-red-400' : 'text-slate-700 dark:text-slate-200');
+
+    if (s.totalTrades === 0) {
+        kpiEl.innerHTML = `<div class="col-span-full text-center text-sm text-slate-500 dark:text-slate-400 py-4">Aún sin operaciones registradas. Empieza a añadir Take Profit / Stop Loss para ver tus estadísticas.</div>`;
+    } else {
+        const tiles = [
+            { label: 'Win rate', val: `${s.winRate.toFixed(0)}%`, sub: `${s.wins}W / ${s.losses}L`, cls: 'text-slate-800 dark:text-slate-100' },
+            { label: 'Profit factor', val: pf, sub: s.profitFactor >= 1 ? 'rentable' : 'en pérdida', cls: (s.profitFactor >= 1 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400') },
+            { label: 'Neto', val: signMoney(s.net), sub: `${s.daysCount} día(s)`, cls: netColor },
+            { label: 'Operaciones', val: `${s.totalTrades}`, sub: `${s.daysCount ? (s.totalTrades / s.daysCount).toFixed(1) : '0'}/día`, cls: 'text-slate-800 dark:text-slate-100' },
+            { label: 'Racha', val: `${s.streak || 0} ${s.streakSign > 0 ? '🟢' : (s.streakSign < 0 ? '🔴' : '')}`, sub: s.streakSign > 0 ? 'días verdes' : (s.streakSign < 0 ? 'días rojos' : '—'), cls: 'text-slate-800 dark:text-slate-100' },
+            { label: 'Mejor día', val: s.bestDay ? signMoney(s.bestDay.net) : '—', sub: s.bestDay ? s.bestDay.dateKey.slice(5) : '', cls: 'text-green-600 dark:text-green-400' }
+        ];
+        kpiEl.innerHTML = tiles.map(t => `
+            <div class="sub-surface p-3 text-center">
+                <div class="text-[0.65rem] uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1">${t.label}</div>
+                <div class="font-bold text-base tabular-nums ${t.cls}">${t.val}</div>
+                <div class="text-[0.7rem] text-slate-500 dark:text-slate-400 mt-0.5">${t.sub}</div>
+            </div>`).join('');
     }
 }
 

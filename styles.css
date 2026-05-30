@@ -1249,3 +1249,50 @@ button:focus-visible {
     color: var(--muted-2);
     font-weight: 600;
 }
+
+/* ==================== Estadísticas: calendario P&L ==================== */
+.cal-nav {
+    width: 32px; height: 32px; border-radius: 8px;
+    display: inline-flex; align-items: center; justify-content: center;
+    border: 1px solid var(--border); background: var(--surface-muted);
+    color: var(--muted); cursor: pointer; transition: background .15s, color .15s, border-color .15s;
+}
+.cal-nav:hover { color: var(--text); border-color: var(--primary); }
+
+.pnl-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 6px;
+}
+.pnl-wd {
+    text-align: center;
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: var(--muted-2);
+    padding-bottom: 2px;
+}
+.pnl-cell {
+    position: relative;
+    aspect-ratio: 1 / 1;
+    border-radius: 9px;
+    border: 1px solid var(--border);
+    background: var(--surface-muted);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 40px;
+    overflow: hidden;
+}
+.pnl-cell.empty { border: none; background: transparent; }
+.pnl-cell .pnl-d { font-size: 0.72rem; color: var(--muted); font-weight: 600; line-height: 1; }
+.pnl-cell.pos .pnl-d, .pnl-cell.neg .pnl-d { color: #06281e; }
+.dark .pnl-cell.pos .pnl-d, .dark .pnl-cell.neg .pnl-d { color: #07120f; }
+.pnl-cell .pnl-val { font-size: 0.66rem; font-weight: 800; margin-top: 1px; color: #06281e; line-height: 1; }
+.pnl-cell.today { outline: 2px solid var(--primary); outline-offset: -2px; }
+
+@media (max-width: 480px) {
+    .pnl-grid { gap: 4px; }
+    .pnl-cell { min-height: 34px; border-radius: 7px; }
+    .pnl-cell .pnl-val { font-size: 0.58rem; }
+}

@@ -484,6 +484,21 @@
         </div>
     </div>
 
+    <!-- ESTADÍSTICAS (scoreboard global) -->
+    <div class="max-w-6xl mx-auto px-4 mt-8">
+        <div class="muted-card backdrop-blur theme-transition p-6 sm:p-8">
+            <div class="flex items-center justify-between mb-5 gap-3 flex-wrap">
+                <h3 class="text-slate-700 dark:text-slate-300 font-bold text-lg flex items-center gap-2">
+                    <i class="fa-solid fa-chart-pie text-blue-500 dark:text-blue-400"></i> Estadísticas
+                </h3>
+                <button onclick="openMonthlySummaries()" class="text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1.5">
+                    Ver resúmenes mensuales <i class="fa-solid fa-arrow-right text-xs"></i>
+                </button>
+            </div>
+            <div id="stats-kpis" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3"></div>
+        </div>
+    </div>
+
     <!-- SECCIÓN DESPLEGABLE: RESÚMENES -->
     <div id="summaries-section" class="hidden max-w-6xl mx-auto px-4 mt-8 space-y-6">
 
