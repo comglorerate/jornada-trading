@@ -17,6 +17,11 @@
             } catch (e) { /* no bloquear la carga por errores de storage */ }
         })();
     </script>
+    <script>
+        // En la app (Trading Suite) la autenticación se gestiona a nivel de app:
+        // ocultamos los controles de login propios de Jornada. En la web no aplica.
+        try { if (window.AndroidAuth) document.documentElement.classList.add('in-app'); } catch (e) {}
+    </script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Jornada de Trading</title>

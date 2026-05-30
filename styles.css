@@ -1298,3 +1298,13 @@ button:focus-visible {
     .pnl-cell { min-height: 34px; border-radius: 7px; }
     .pnl-cell .pnl-val { font-size: 0.58rem; }
 }
+
+/* ==================== App (Trading Suite): auth a nivel de app ==================== */
+/* Oculta los controles de login/cuenta propios de Jornada cuando corre dentro del APK. */
+html.in-app #auth-status,
+html.in-app #header-auth-cta,
+html.in-app #auth-controls,
+html.in-app #auth-cta-register-mobile,
+html.in-app #auth-cta-login-mobile,
+html.in-app #btn-signout-mobile,
+html.in-app #mobile-menu .mm-divider { display: none !important; }
