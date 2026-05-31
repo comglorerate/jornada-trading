@@ -71,8 +71,43 @@ function normalizeCurrentData() {
 // Capital dinámico: configuración y estado
 const CAPITAL_STORAGE_KEY = 'trading_capital_config';
 const DISPLAY_PREF_KEY = 'trading_display_pref';
-let capitalConfig = { initial: 1000 };
+let capitalConfig = { initial: 1000, withdrawals: [], deposits: [] };
 let capitalTimeline = []; // [{ dateKey, cumulativeNet, capital, relativePct }]
+
+// --- Movimientos de capital: retiros y depósitos ---
+// Cada movimiento: { id, date: 'YYYY-MM-DD', amount: number>0, note: string }
+// Retiros: salen de la cuenta (restan del capital actual).
+// Depósitos: entran a la cuenta (suman al capital actual).
+// NINGUNO toca el capital inicial ni el % de rendimiento: solo el trading mueve
+// el rendimiento; agregar o sacar dinero no es ganancia ni pérdida.
+function getMovements(kind) { // kind: 'withdrawals' | 'deposits'
+    return Array.isArray(capitalConfig[kind]) ? capitalConfig[kind] : [];
+}
+function totalMovements(kind) {
+    return getMovements(kind).reduce((s, m) => s + (Number(m.amount) || 0), 0);
+}
+function movementsUpTo(kind, dateKey) {
+    return getMovements(kind).reduce((s, m) => (m.date && m.date <= dateKey ? s + (Number(m.amount) || 0) : s), 0);
+}
+// Atajos por tipo
+function getWithdrawals() { return getMovements('withdrawals'); }
+function getDeposits() { return getMovements('deposits'); }
+function getTotalWithdrawals() { return totalMovements('withdrawals'); }
+function getTotalDeposits() { return totalMovements('deposits'); }
+function getWithdrawalsUpTo(dateKey) { return movementsUpTo('withdrawals', dateKey); }
+function getDepositsUpTo(dateKey) { return movementsUpTo('deposits', dateKey); }
+// Saldo neto de movimientos (depósitos − retiros) hasta una fecha o total
+function netMovements() { return getTotalDeposits() - getTotalWithdrawals(); }
+function netMovementsUpTo(dateKey) { return getDepositsUpTo(dateKey) - getWithdrawalsUpTo(dateKey); }
+function saveCapitalLocal() {
+    try {
+        localStorage.setItem(CAPITAL_STORAGE_KEY, JSON.stringify({
+            initial: capitalConfig.initial,
+            withdrawals: getWithdrawals(),
+            deposits: getDeposits()
+        }));
+    } catch (e) { /* ignore */ }
+}
 let __capitalRecalcTimer = null;
 let __isCalculatingCapital = false;
 // Modo de visualización: 'dollars' (montos en $, fuente de verdad) o 'percent'
@@ -325,7 +360,7 @@ function ensureCapitalConfigListener() {
                 const next = sanitizeCapitalValue(candidate, capitalConfig.initial);
                 if (Math.abs(next - capitalConfig.initial) >= 1e-6) {
                     capitalConfig.initial = next;
-                    try { localStorage.setItem(CAPITAL_STORAGE_KEY, JSON.stringify({ initial: capitalConfig.initial })); } catch (e) { /* ignore */ }
+                    saveCapitalLocal();
                     const input = document.getElementById('capital-input');
                     if (input && document.activeElement !== input) input.value = capitalConfig.initial;
                     changed = true;
@@ -340,6 +375,19 @@ function ensureCapitalConfigListener() {
                     try { renderUI(); } catch (e) { /* ignore */ }
                     changed = true;
                 }
+
+                // 3) Movimientos de capital: retiros y depósitos
+                if (Array.isArray(data.withdrawals) && JSON.stringify(getWithdrawals()) !== JSON.stringify(data.withdrawals)) {
+                    capitalConfig.withdrawals = data.withdrawals;
+                    saveCapitalLocal();
+                    changed = true;
+                }
+                if (Array.isArray(data.deposits) && JSON.stringify(getDeposits()) !== JSON.stringify(data.deposits)) {
+                    capitalConfig.deposits = data.deposits;
+                    saveCapitalLocal();
+                    changed = true;
+                }
+                if (changed) { try { updateCapMoveUI(); } catch (e) { /* ignore */ } }
 
                 if (changed) scheduleCapitalRecalc(0);
             } catch (err) {
@@ -467,6 +515,8 @@ async function loadCapitalConfig(forceRemote = false) {
         if (raw) {
             const parsed = JSON.parse(raw);
             capitalConfig.initial = sanitizeCapitalValue(parsed.initial, capitalConfig.initial);
+            if (Array.isArray(parsed.withdrawals)) capitalConfig.withdrawals = parsed.withdrawals;
+            if (Array.isArray(parsed.deposits)) capitalConfig.deposits = parsed.deposits;
         }
     } catch (e) { /* ignore parse errors */ }
 
@@ -487,6 +537,9 @@ async function loadCapitalConfig(forceRemote = false) {
                         displayPreference.mode = data.displayMode;
                         try { localStorage.setItem(DISPLAY_PREF_KEY, JSON.stringify(displayPreference)); } catch (e) { /* ignore */ }
                     }
+                    // Movimientos de capital
+                    if (Array.isArray(data.withdrawals)) capitalConfig.withdrawals = data.withdrawals;
+                    if (Array.isArray(data.deposits)) capitalConfig.deposits = data.deposits;
                 } else if (forceRemote) {
                     await window.firebaseFirestoreSetDoc(docRef, { initialCapital: capitalConfig.initial });
                 }
@@ -496,12 +549,11 @@ async function loadCapitalConfig(forceRemote = false) {
         }
     }
 
-    try {
-        localStorage.setItem(CAPITAL_STORAGE_KEY, JSON.stringify({ initial: capitalConfig.initial }));
-    } catch (e) { /* ignore */ }
+    saveCapitalLocal();
 
     const input = document.getElementById('capital-input');
     if (input) input.value = capitalConfig.initial;
+    try { updateCapMoveUI(); } catch (e) { /* ignore */ }
 }
 
 async function saveCapitalConfigRemote(value) {
@@ -510,18 +562,165 @@ async function saveCapitalConfigRemote(value) {
     if (!uid) return;
     try {
         const docRef = window.firebaseFirestoreDoc(window._firebase.db, 'users', uid, 'config', 'capital');
-        await window.firebaseFirestoreSetDoc(docRef, { initialCapital: value });
+        // merge:true para no borrar displayMode / withdrawals del mismo doc
+        await window.firebaseFirestoreSetDoc(docRef, { initialCapital: value }, { merge: true });
     } catch (err) {
         console.warn('No se pudo guardar capital en Firestore', err);
     }
 }
 
+// Configuración por tipo de movimiento (ids de elementos y textos).
+const CAP_MOVE_CFG = {
+    withdrawals: { prefix: 'withdraw', chip: 'withdraw-total-chip', noun: 'retiro', idp: 'w',
+        emptyMsg: 'Aún no has registrado retiros.', okMsg: 'Retiro registrado', delMsg: 'Retiro eliminado',
+        confirmMsg: '¿Eliminar este retiro? El capital actual volverá a incluir ese monto.' },
+    deposits: { prefix: 'deposit', chip: 'deposit-total-chip', noun: 'depósito', idp: 'd',
+        emptyMsg: 'Aún no has registrado depósitos.', okMsg: 'Depósito registrado', delMsg: 'Depósito eliminado',
+        confirmMsg: '¿Eliminar este depósito? El capital actual dejará de incluir ese monto.' }
+};
+
+async function saveCapMoveRemote(kind, list) {
+    if (!hasFirestore()) return;
+    const uid = window._firebase.uid;
+    if (!uid) return;
+    try {
+        const docRef = window.firebaseFirestoreDoc(window._firebase.db, 'users', uid, 'config', 'capital');
+        const payload = {}; payload[kind] = list;
+        await window.firebaseFirestoreSetDoc(docRef, payload, { merge: true });
+    } catch (err) {
+        console.warn('No se pudo guardar ' + kind + ' en Firestore', err);
+    }
+}
+
 function persistCapitalConfig(value) {
     capitalConfig.initial = sanitizeCapitalValue(value, capitalConfig.initial);
-    try { localStorage.setItem(CAPITAL_STORAGE_KEY, JSON.stringify({ initial: capitalConfig.initial })); } catch (e) { /* ignore */ }
+    saveCapitalLocal();
     saveCapitalConfigRemote(capitalConfig.initial);
     scheduleCapitalRecalc(0);
     renderCapitalDisplays(getCurrentNet());
+}
+
+// Persiste una lista de movimientos (local + remoto) y refresca UI/cálculos.
+function persistCapMove(kind) {
+    saveCapitalLocal();
+    saveCapMoveRemote(kind, getMovements(kind));
+    scheduleCapitalRecalc(0);
+    renderCapitalDisplays(getCurrentNet());
+    updateCapMoveUI();
+}
+
+// ==================== MOVIMIENTOS DE CAPITAL: UI ====================
+function escapeHtml(str) {
+    return String(str == null ? '' : str)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+// Actualiza los chips (Retiros/Depósitos), las listas de modales abiertos y el
+// resumen de movimientos en Estadísticas.
+function updateCapMoveUI() {
+    Object.keys(CAP_MOVE_CFG).forEach(kind => {
+        const cfg = CAP_MOVE_CFG[kind];
+        const total = totalMovements(kind);
+        const chip = document.getElementById(cfg.chip);
+        if (chip) {
+            if (total > 0) { chip.textContent = '$' + formatCurrency(total); chip.classList.remove('hidden'); }
+            else { chip.textContent = ''; chip.classList.add('hidden'); }
+        }
+        const overlay = document.getElementById(cfg.prefix + '-modal-overlay');
+        if (overlay && !overlay.classList.contains('hidden')) renderCapMoveList(kind);
+    });
+    try { renderCapitalMovementsStats(); } catch (e) { /* ignore */ }
+}
+
+function renderCapMoveList(kind) {
+    const cfg = CAP_MOVE_CFG[kind];
+    const totalEl = document.getElementById(cfg.prefix + '-modal-total');
+    if (totalEl) totalEl.textContent = '$' + formatCurrency(totalMovements(kind));
+
+    const listEl = document.getElementById(cfg.prefix + '-list');
+    if (!listEl) return;
+    const list = getMovements(kind).slice().sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+    if (list.length === 0) {
+        listEl.innerHTML = `<div class="text-center text-slate-400 dark:text-slate-500 text-sm py-4">${cfg.emptyMsg}</div>`;
+        return;
+    }
+    listEl.innerHTML = list.map(m => {
+        const amount = '$' + formatCurrency(Number(m.amount) || 0);
+        const note = m.note ? `<div class="text-xs text-slate-400 dark:text-slate-500 truncate">${escapeHtml(m.note)}</div>` : '';
+        return `
+        <div class="flex items-center justify-between gap-3 py-2 border-b border-slate-100 dark:border-slate-700/60 last:border-0">
+            <div class="min-w-0">
+                <div class="text-sm font-semibold text-slate-700 dark:text-slate-200">${amount}</div>
+                <div class="text-xs text-slate-400 dark:text-slate-500">${m.date || ''}</div>
+                ${note}
+            </div>
+            <button onclick="deleteCapMove('${kind}','${m.id}')" class="text-slate-400 hover:text-red-500 dark:hover:text-red-400 p-2 rounded transition" aria-label="Eliminar ${cfg.noun}">
+                <i class="fa-solid fa-trash"></i>
+            </button>
+        </div>`;
+    }).join('');
+}
+
+// Resumen "Depositado / Retirado" dentro de Estadísticas.
+function renderCapitalMovementsStats() {
+    const depEl = document.getElementById('stats-deposited');
+    const wdEl = document.getElementById('stats-withdrawn');
+    const totalD = getTotalDeposits();
+    const totalW = getTotalWithdrawals();
+    if (depEl) depEl.textContent = '$' + formatCurrency(totalD);
+    if (wdEl) wdEl.textContent = '$' + formatCurrency(totalW);
+    const wrap = document.getElementById('capital-movements');
+    if (wrap) wrap.classList.toggle('hidden', totalD <= 0 && totalW <= 0);
+}
+
+function openCapMoveModal(kind) {
+    const cfg = CAP_MOVE_CFG[kind];
+    const overlay = document.getElementById(cfg.prefix + '-modal-overlay');
+    if (!overlay) return;
+    const dateEl = document.getElementById(cfg.prefix + '-date');
+    const amountEl = document.getElementById(cfg.prefix + '-amount');
+    const noteEl = document.getElementById(cfg.prefix + '-note');
+    if (dateEl) dateEl.value = localDateKey(new Date());
+    if (amountEl) amountEl.value = '';
+    if (noteEl) noteEl.value = '';
+    renderCapMoveList(kind);
+    overlay.classList.remove('hidden');
+}
+
+function closeCapMoveModal(kind) {
+    const overlay = document.getElementById(CAP_MOVE_CFG[kind].prefix + '-modal-overlay');
+    if (overlay) overlay.classList.add('hidden');
+}
+
+function submitCapMove(kind) {
+    const cfg = CAP_MOVE_CFG[kind];
+    const amountEl = document.getElementById(cfg.prefix + '-amount');
+    const dateEl = document.getElementById(cfg.prefix + '-date');
+    const noteEl = document.getElementById(cfg.prefix + '-note');
+    const amount = parseFloat((amountEl && amountEl.value) || '');
+    if (!Number.isFinite(amount) || amount <= 0) {
+        showToast('Ingresa un monto válido', 'error');
+        return;
+    }
+    const date = (dateEl && dateEl.value) || localDateKey(new Date());
+    const note = ((noteEl && noteEl.value) || '').trim().slice(0, 200);
+    const id = cfg.idp + Date.now() + Math.floor(Math.random() * 1000);
+    if (!Array.isArray(capitalConfig[kind])) capitalConfig[kind] = [];
+    capitalConfig[kind].push({ id, date, amount: Math.round(amount * 100) / 100, note });
+    persistCapMove(kind);
+    if (amountEl) amountEl.value = '';
+    if (noteEl) noteEl.value = '';
+    showToast(cfg.okMsg, 'success');
+}
+
+async function deleteCapMove(kind, id) {
+    const cfg = CAP_MOVE_CFG[kind];
+    const ok = await showConfirmModal(cfg.confirmMsg);
+    if (!ok) return;
+    capitalConfig[kind] = getMovements(kind).filter(m => m.id !== id);
+    persistCapMove(kind);
+    showToast(cfg.delMsg, 'success');
 }
 
 function setupCapitalInput() {
@@ -678,13 +877,17 @@ function computeCapitalTimelineFromJournals(journalMap) {
 }
 
 function getCapitalSnapshot() {
+    // Depósitos suman y retiros restan del dinero disponible (capital actual),
+    // pero NO afectan el % de rendimiento (relativePct mide solo el P&L de trading).
+    const net = netMovements(); // depósitos − retiros
     const base = {
-        capital: capitalConfig.initial,
+        capital: capitalConfig.initial + net,
         relativePct: 0,
         cumulativeNet: 0
     };
     if (!capitalTimeline || capitalTimeline.length === 0) return base;
-    return capitalTimeline[capitalTimeline.length - 1];
+    const last = capitalTimeline[capitalTimeline.length - 1];
+    return Object.assign({}, last, { capital: last.capital + net });
 }
 
 function renderCapitalDisplays(netForDay = null) {
@@ -770,7 +973,8 @@ function buildDailyCapitalSeries(initial, journals) {
             dailyNet = tp - sl;
             cum += dailyNet;
         }
-        series.push({ dateKey: key, capital: initial + cum, dailyNet });
+        // Reflejar depósitos (suben) y retiros (bajan) en la gráfica
+        series.push({ dateKey: key, capital: initial + cum + netMovementsUpTo(key), dailyNet });
     }
     return series;
 }
@@ -879,6 +1083,7 @@ function renderStatsUI() {
                 <div class="text-[0.7rem] text-slate-500 dark:text-slate-400 mt-0.5">${t.sub}</div>
             </div>`).join('');
     }
+    try { renderCapitalMovementsStats(); } catch (e) { /* ignore */ }
 }
 
 // ==================== SPARKLINE ====================

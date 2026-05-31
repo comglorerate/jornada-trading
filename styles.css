@@ -466,6 +466,73 @@ button:focus-visible {
     margin-top: 0.5rem;
     padding: 0 0.2rem;
 }
+.cap-move-actions {
+    margin-right: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+}
+.capmove-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    background: var(--surface-muted);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-weight: 600;
+    font-size: 0.78rem;
+    padding: 0.35rem 0.7rem;
+    border-radius: 0.6rem;
+    cursor: pointer;
+    transition: border-color .15s ease, background .15s ease;
+    -webkit-tap-highlight-color: transparent;
+}
+.capmove-btn:hover { border-color: var(--primary); }
+.capmove-btn i { font-size: 0.8rem; }
+.capmove-btn.is-deposit i { color: #16a34a; }
+.capmove-btn.is-withdraw i { color: #ef4444; }
+.withdraw-total-chip {
+    color: #fff;
+    font-size: 0.7rem;
+    font-weight: 700;
+    line-height: 1;
+    padding: 0.18rem 0.4rem;
+    border-radius: 0.5rem;
+    background: var(--primary);
+}
+.withdraw-total-chip.chip-pos { background: #16a34a; }
+.withdraw-total-chip.chip-neg { background: #ef4444; }
+
+/* Resumen de movimientos de capital en Estadísticas */
+.cap-moves {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
+    margin-bottom: 1.1rem;
+}
+.cap-move {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.15rem;
+    padding: 0.65rem 0.5rem;
+    border-radius: 0.7rem;
+    background: var(--surface-muted);
+    border: 1px solid var(--border);
+}
+.cap-move-label {
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--muted-2);
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+}
+.cap-move-val { font-weight: 700; font-size: 1rem; }
+.cap-move-val.pos { color: #16a34a; }
+.cap-move-val.neg { color: #ef4444; }
 .display-mode-label {
     font-size: 0.72rem;
     font-weight: 600;
@@ -744,6 +811,22 @@ button:focus-visible {
 .kpi-input::-webkit-outer-spin-button,
 .kpi-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 .kpi-input[type=number] { -moz-appearance: textfield; }
+
+/* Capital inicial fijo (no editable): se muestra como valor estático.
+   El dinero entra/sale por depósitos y retiros, no editando este campo. */
+.kpi-input-wrap.is-static {
+    background: transparent;
+    border-color: transparent;
+    padding-left: 0;
+}
+.kpi-input-wrap.is-static:focus-within {
+    border-color: transparent;
+    box-shadow: none;
+}
+.kpi-input[readonly] {
+    cursor: default;
+    pointer-events: none;
+}
 
 /* Sparkline ocupa toda la fila inferior del kpi-card */
 .kpi-sparkline-wrap {
@@ -1313,3 +1396,58 @@ html.in-app #theme-toggle-desktop,
 html.in-app #theme-toggle-mobile,
 html.in-app #mobile-hamburger,
 html.in-app #mobile-menu { display: none !important; }
+
+/* ==================== Pestañas (Operar / Estadísticas) ==================== */
+/* Barra fija: se queda pegada arriba al hacer scroll dentro de la pestaña */
+.jt-tabs-bar {
+    position: sticky;
+    top: 0;
+    z-index: 30;
+    padding-top: 10px;
+    padding-bottom: 12px;
+    background: #f0f4f8;
+}
+html.dark .jt-tabs-bar { background: #0c1628; }
+.jt-tabs {
+    display: flex;
+    gap: 6px;
+    padding: 5px;
+    border-radius: 14px;
+    background: #e6ecf3;
+    border: 1px solid #dbe3ee;
+}
+html.dark .jt-tabs {
+    background: rgba(21, 32, 58, 0.7);
+    border-color: rgba(255, 255, 255, 0.06);
+}
+.jt-tab {
+    flex: 1 1 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 11px 10px;
+    border: none;
+    border-radius: 10px;
+    background: transparent;
+    color: #64748b;
+    font-weight: 700;
+    font-size: 0.95rem;
+    cursor: pointer;
+    transition: background .18s ease, color .18s ease, box-shadow .18s ease;
+    -webkit-tap-highlight-color: transparent;
+}
+html.dark .jt-tab { color: #94a3b8; }
+.jt-tab i { font-size: 0.9rem; opacity: .85; }
+.jt-tab.is-active {
+    background: #ffffff;
+    color: #0d9488;
+    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.10);
+}
+html.dark .jt-tab.is-active {
+    background: linear-gradient(135deg, #2dd4bf, #0d9488);
+    color: #04201d;
+    box-shadow: 0 4px 14px rgba(45, 212, 191, 0.30);
+}
+.jt-panel { animation: jtFade .22s ease; }
+@keyframes jtFade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
