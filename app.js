@@ -5,11 +5,11 @@ function toggleTheme() {
 
     if (html.classList.contains('dark')) {
         html.classList.remove('dark');
-        icons.forEach(ic => { ic.classList.remove('fa-sun'); ic.classList.add('fa-moon'); });
+        icons.forEach(ic => { ic.classList.remove('ph-sun'); ic.classList.add('ph-moon'); });
         localStorage.setItem('theme', 'light');
     } else {
         html.classList.add('dark');
-        icons.forEach(ic => { ic.classList.remove('fa-moon'); ic.classList.add('fa-sun'); });
+        icons.forEach(ic => { ic.classList.remove('ph-moon'); ic.classList.add('ph-sun'); });
         localStorage.setItem('theme', 'dark');
     }
 }
@@ -20,7 +20,7 @@ function toggleTheme() {
     const icons = Array.from(document.querySelectorAll('.theme-icon'));
     if (savedTheme === 'dark' || !savedTheme) {
         document.documentElement.classList.add('dark');
-        icons.forEach(ic => { ic.classList.remove('fa-moon'); ic.classList.add('fa-sun'); });
+        icons.forEach(ic => { ic.classList.remove('ph-moon'); ic.classList.add('ph-sun'); });
         if (!savedTheme) localStorage.setItem('theme', 'dark');
     }
 })();
@@ -656,7 +656,7 @@ function renderCapMoveList(kind) {
                 ${note}
             </div>
             <button onclick="deleteCapMove('${kind}','${m.id}')" class="text-slate-400 hover:text-red-500 dark:hover:text-red-400 p-2 rounded transition" aria-label="Eliminar ${cfg.noun}">
-                <i class="fa-solid fa-trash"></i>
+                <i class="ph ph-trash"></i>
             </button>
         </div>`;
     }).join('');
@@ -1949,7 +1949,7 @@ function buildRowEditorHTML(type, id, item) {
             </label>
         </div>
         <button type="button" class="details-add-target" data-row-add-target onclick="addRowTargetSlot('${type}', ${id})">
-            <i class="fa-solid fa-plus"></i> Añadir target
+            <i class="ph ph-plus"></i> Añadir target
         </button>
         <div class="row-editor-actions">
             <button type="button" class="row-editor-btn" onclick="cancelEdit('${type}', ${id})">Cancelar</button>
@@ -2262,12 +2262,12 @@ function renderList(type, list) {
                     <span id="asset-${type}-${item.id}" class="font-bold text-slate-700 dark:text-slate-200 text-xs bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 rounded">${safeAsset}</span>
                     <span id="value-${type}-${item.id}" data-value="${valueNum}" class="value-span font-bold ${valueColor} text-sm tabular-nums">${displayText}</span>
                     <span class="entry-details-badge ${hasDetails ? 'has-details' : ''}" title="${hasDetails ? 'Tiene detalles' : 'Sin detalles'}">
-                        <i class="fa-solid ${hasDetails ? 'fa-circle-info' : 'fa-ellipsis'}"></i>
+                        <i class="ph ${hasDetails ? 'ph-info' : 'ph-dots-three'}"></i>
                     </span>
                 </div>
                 <div class="entry-actions flex gap-3 items-center" onclick="event.stopPropagation()">
-                    <button onclick="toggleEdit('${type}', ${item.id})" title="Editar" class="entry-action-btn entry-edit text-slate-400 hover:text-teal-400 text-sm"><i class="fa-solid fa-gear"></i></button>
-                    <button onclick="deleteEntry('${type}', ${item.id})" title="Eliminar" class="entry-action-btn entry-delete text-red-300 hover:text-red-500 text-sm"><i class="fa-solid fa-xmark"></i></button>
+                    <button onclick="toggleEdit('${type}', ${item.id})" title="Editar" class="entry-action-btn entry-edit text-slate-400 hover:text-teal-400 text-sm"><i class="ph ph-gear-six"></i></button>
+                    <button onclick="deleteEntry('${type}', ${item.id})" title="Eliminar" class="entry-action-btn entry-delete text-red-300 hover:text-red-500 text-sm"><i class="ph ph-x"></i></button>
                 </div>
             </div>
             <div id="row-editor-${type}-${item.id}" class="row-editor hidden"></div>
@@ -2281,8 +2281,8 @@ function renderList(type, list) {
         btn.className = 'list-expand-btn w-full mt-2 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-slate-700/50 rounded py-2 transition flex items-center justify-center gap-1.5';
         btn.setAttribute('onclick', `toggleListExpand('${type}')`);
         btn.innerHTML = expanded
-            ? '<i class="fa-solid fa-chevron-up"></i> Ver menos'
-            : `<i class="fa-solid fa-chevron-down"></i> Ver todos (${list.length})`;
+            ? '<i class="ph ph-caret-up"></i> Ver menos'
+            : `<i class="ph ph-caret-down"></i> Ver todos (${list.length})`;
         container.appendChild(btn);
     }
 }
@@ -2382,7 +2382,7 @@ function buildRowViewHTML(type, id, item) {
         <div class="row-editor-actions">
             <button type="button" class="row-editor-btn" onclick="cancelEdit('${type}', ${id})">Cerrar</button>
             <button type="button" class="row-editor-btn is-primary" onclick="startEdit('${type}', ${id})">
-                <i class="fa-solid fa-pen-to-square"></i> Editar
+                <i class="ph ph-pencil-simple"></i> Editar
             </button>
         </div>
     `;
@@ -2499,9 +2499,9 @@ function toggleSummaries() {
     section.classList.toggle('hidden');
 
     if (section.classList.contains('hidden')) {
-        btn.innerHTML = '<i class="fa-solid fa-chart-column"></i> Ver Resúmenes';
+        btn.innerHTML = '<i class="ph ph-chart-bar"></i> Ver Resúmenes';
     } else {
-        btn.innerHTML = '<i class="fa-solid fa-eye-slash"></i> Ocultar Resúmenes';
+        btn.innerHTML = '<i class="ph ph-eye-slash"></i> Ocultar Resúmenes';
         generateSummaries();
     }
 }
@@ -2602,7 +2602,7 @@ async function generateSummaries() {
                         <button type="button" class="month-card-trigger w-full text-left" aria-expanded="false" aria-controls="${monthId}-weeks">
                             <div class="flex justify-between items-center mb-3">
                                 <div class="flex items-center gap-2">
-                                    <i class="fa-solid fa-chevron-right month-chevron text-slate-400 dark:text-slate-500 transition-transform"></i>
+                                    <i class="ph ph-caret-right month-chevron text-slate-400 dark:text-slate-500 transition-transform"></i>
                                     <div class="font-bold text-slate-700 dark:text-slate-200">${monthNameCap}</div>
                                 </div>
                                 <div class="font-bold text-lg ${monthNetClass} tabular-nums">${formatAmount(stats.net, { showSign: true })}</div>
@@ -2872,7 +2872,7 @@ function updateAuthUI() {
                     summariesSection.classList.remove('hidden');
                 }
                 if (toggleBtn) {
-                    toggleBtn.innerHTML = '<i class="fa-solid fa-eye-slash"></i> Ocultar Resúmenes';
+                    toggleBtn.innerHTML = '<i class="ph ph-eye-slash"></i> Ocultar Resúmenes';
                 }
                 // Generar resúmenes inmediatamente (silenciar errores)
                 try { generateSummaries(); } catch (e) { /* ignore */ }
@@ -2882,7 +2882,7 @@ function updateAuthUI() {
         } else {
             // Si no está autenticado, ocultar la sección y actualizar texto del botón
             if (summariesSection) summariesSection.classList.add('hidden');
-            if (toggleBtn) toggleBtn.innerHTML = '<i class="fa-solid fa-chart-column"></i> Ver Resúmenes';
+            if (toggleBtn) toggleBtn.innerHTML = '<i class="ph ph-chart-bar"></i> Ver Resúmenes';
         }
     } catch (e) {
         // Silenciar errores no críticos
@@ -3060,7 +3060,7 @@ function openAuthModal(mode = 'register') {
     if (mode === 'register') {
         title.innerText = 'Crear cuenta';
         if (subtitle) subtitle.innerText = 'Regístrate para sincronizar tu jornada de trading.';
-        if (icon) { icon.className = 'fa-solid fa-user-plus text-lg'; }
+        if (icon) { icon.className = 'ph ph-user-plus text-lg'; }
         submitText.innerText = 'Registrarme';
         switchText.innerText = '¿Ya tienes cuenta?';
         switchBtn.innerText = 'Inicia sesión aquí';
@@ -3069,7 +3069,7 @@ function openAuthModal(mode = 'register') {
     } else {
         title.innerText = 'Iniciar sesión';
         if (subtitle) subtitle.innerText = 'Bienvenido de vuelta. Accede a tu cuenta.';
-        if (icon) { icon.className = 'fa-solid fa-right-to-bracket text-lg'; }
+        if (icon) { icon.className = 'ph ph-sign-in text-lg'; }
         submitText.innerText = 'Iniciar sesión';
         switchText.innerText = '¿Aún no tienes cuenta?';
         switchBtn.innerText = 'Regístrate aquí';
@@ -3194,8 +3194,8 @@ function setupAuthModal() {
             passInput.setAttribute('type', showing ? 'password' : 'text');
             const icon = togglePass.querySelector('i');
             if (icon) {
-                icon.classList.toggle('fa-eye', showing);
-                icon.classList.toggle('fa-eye-slash', !showing);
+                icon.classList.toggle('ph-eye', showing);
+                icon.classList.toggle('ph-eye-slash', !showing);
             }
             togglePass.setAttribute('aria-label', showing ? 'Mostrar contraseña' : 'Ocultar contraseña');
         });
