@@ -28,8 +28,8 @@
 
     <!-- PWA -->
     <link rel="manifest" href="manifest.json">
-    <meta name="theme-color" content="#0a1020" media="(prefers-color-scheme: dark)">
-    <meta name="theme-color" content="#eef2f7" media="(prefers-color-scheme: light)">
+    <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+    <meta name="theme-color" content="#f2f2f6" media="(prefers-color-scheme: light)">
     <meta name="description" content="Lleva tu journal de trading: take profits, stop losses, capital y resúmenes.">
 
     <!-- iOS -->
@@ -48,16 +48,35 @@
             theme: {
                 extend: {
                     colors: {
-                        // Acento de marca "Aqua Deep": el azul pasa a teal
+                        // Acento "Bento OLED": azul→cian eléctrico (#4facfe → #00f2fe)
                         blue: {
-                            50:  '#effdfb', 100: '#cdf7f0', 200: '#9eeee2',
-                            300: '#5fe0d0', 400: '#34e0cb', 500: '#2dd4bf',
-                            600: '#14b8a6', 700: '#0d9488', 800: '#115e58',
-                            900: '#134e4a', 950: '#042f2e'
+                            50:  '#eef7ff', 100: '#d9edff', 200: '#bce0ff',
+                            300: '#8ecfff', 400: '#4facfe', 500: '#38a0f5',
+                            600: '#2f8fe8', 700: '#1d74c9', 800: '#1c5f9f',
+                            900: '#1b4f7f', 950: '#122f4d'
                         },
-                        // Fondo/superficies oscuras alineadas con las otras apps
+                        // Verde ganancia #30d158 / rojo pérdida #ff453a (iOS)
+                        green: {
+                            50:  '#eafbee', 100: '#d3f7dd', 200: '#a8efbc',
+                            300: '#6fe393', 400: '#30d158', 500: '#2bbf50',
+                            600: '#1f9d44', 700: '#1b7d36', 800: '#17632d',
+                            900: '#124f25', 950: '#07240f'
+                        },
+                        red: {
+                            50:  '#fef2f1', 100: '#fee2e0', 200: '#ffc9c5',
+                            300: '#ff9d96', 400: '#ff453a', 500: '#e93d33',
+                            600: '#d92e26', 700: '#b0251f', 800: '#921f1b',
+                            900: '#781c19', 950: '#420b09'
+                        },
+                        teal: {
+                            300: '#7ff7ff', 400: '#00f2fe', 500: '#00d5df', 600: '#00b7c2'
+                        },
+                        // Superficies OLED: #000 · #0e0e14 · #13131a · líneas #1d1d26/#262633
                         slate: {
-                            700: '#1b2a49', 800: '#15203a', 900: '#0c1628', 950: '#0a1322'
+                            50:  '#f5f5f9', 100: '#ececf2', 200: '#e3e3ea',
+                            300: '#c9c9d2', 400: '#8e8e93', 500: '#77777e',
+                            600: '#3a3a48', 700: '#1d1d26', 800: '#13131a',
+                            900: '#0e0e14', 950: '#000000'
                         }
                     }
                 }
@@ -73,102 +92,88 @@
             display: flex;
         }
     </style>
-    <!-- Iconos FontAwesome -->
+    <!-- Iconos Phosphor -->
     <link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css">
     <link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/fill/style.css">
-    
+
     <link rel="stylesheet" href="styles.css">
 </head>
-<body class="bg-[#f0f4f8] dark:bg-slate-900 text-slate-800 dark:text-slate-100 pb-20 theme-transition overflow-x-hidden auth-pending">
+<body class="theme-transition overflow-x-hidden auth-pending">
 
     <!-- Modal de registro / login -->
-    <div id="auth-modal-overlay" class="fixed inset-0 flex items-center justify-center z-50 hidden">
-        <div class="auth-modal-card bg-white dark:bg-slate-800 rounded-xl shadow-xl w-full max-w-md p-6 relative mx-4">
-            <button id="auth-modal-close" class="absolute top-3 right-3 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200" aria-label="Cerrar">
+    <div id="auth-modal-overlay" class="jt-overlay hidden">
+        <div class="jt-modal-card auth-modal-card">
+            <button id="auth-modal-close" class="jt-modal-close" aria-label="Cerrar">
                 <i class="ph ph-x"></i>
             </button>
 
-            <div class="text-center mb-5">
-                <div class="inline-flex items-center justify-center h-12 w-12 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-300 mb-3">
+            <div class="auth-head">
+                <div class="auth-ico-wrap">
                     <i id="auth-modal-icon" class="ph ph-user-plus text-lg"></i>
                 </div>
-                <h2 id="auth-modal-title" class="text-xl font-bold text-slate-800 dark:text-slate-100">
-                    Crear cuenta
-                </h2>
-                <p id="auth-modal-subtitle" class="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                    Registra tu cuenta para sincronizar tu jornada de trading.
-                </p>
+                <h2 id="auth-modal-title">Crear cuenta</h2>
+                <p id="auth-modal-subtitle">Registra tu cuenta para sincronizar tu jornada de trading.</p>
             </div>
 
-            <form id="auth-form" novalidate class="space-y-3 mb-3">
+            <form id="auth-form" novalidate class="auth-form-body">
                 <div>
-                    <label for="auth-email" class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">Correo electrónico</label>
+                    <label for="auth-email" class="jt-field-label">Correo electrónico</label>
                     <div class="relative">
-                        <i class="ph ph-envelope-simple absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>
+                        <i class="ph ph-envelope-simple auth-input-ico"></i>
                         <input
                             id="auth-email"
                             type="email"
                             autocomplete="email"
                             required
-                            class="custom-input w-full pl-9 pr-3 py-2 rounded text-sm placeholder-slate-400"
+                            class="custom-input auth-input-with-ico"
                             placeholder="tucorreo@ejemplo.com"
                         />
                     </div>
                 </div>
 
                 <div>
-                    <label for="auth-password" class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">Contraseña</label>
+                    <label for="auth-password" class="jt-field-label">Contraseña</label>
                     <div class="relative">
-                        <i class="ph ph-lock absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>
+                        <i class="ph ph-lock auth-input-ico"></i>
                         <input
                             id="auth-password"
                             type="password"
                             autocomplete="current-password"
                             required
                             minlength="6"
-                            class="custom-input w-full pl-9 pr-10 py-2 rounded text-sm placeholder-slate-400"
+                            class="custom-input auth-input-with-ico auth-input-with-eye"
                             placeholder="Mínimo 6 caracteres"
                         />
-                        <button type="button" id="auth-toggle-password" class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1" aria-label="Mostrar contraseña" tabindex="-1">
+                        <button type="button" id="auth-toggle-password" aria-label="Mostrar contraseña" tabindex="-1">
                             <i class="ph ph-eye"></i>
                         </button>
                     </div>
                 </div>
 
-                <div id="auth-error" class="hidden text-xs text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-900/40 rounded px-3 py-2"></div>
+                <div id="auth-error" class="hidden auth-error"></div>
 
-                <div id="auth-forgot-row" class="text-right">
-                    <button type="button" id="auth-forgot-btn" class="text-xs text-blue-600 dark:text-blue-400 hover:underline">¿Olvidaste tu contraseña?</button>
+                <div id="auth-forgot-row" class="auth-forgot-row">
+                    <button type="button" id="auth-forgot-btn" class="jt-link">¿Olvidaste tu contraseña?</button>
                 </div>
 
-                <button
-                    type="submit"
-                    id="auth-modal-submit"
-                    class="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed text-white font-semibold py-2 rounded-lg flex items-center justify-center gap-2"
-                >
-                    <span id="auth-modal-submit-spinner" class="hidden h-4 w-4 border-2 border-white/40 border-t-white rounded-full animate-spin"></span>
+                <button type="submit" id="auth-modal-submit" class="btn-grad">
+                    <span id="auth-modal-submit-spinner" class="hidden btn-spinner"></span>
                     <span id="auth-modal-submit-text">Registrarme</span>
                 </button>
             </form>
 
-            <div class="flex items-center gap-2 my-3">
-                <div class="flex-1 h-px bg-slate-200 dark:bg-slate-700"></div>
-                <span class="text-xs text-slate-400">o</span>
-                <div class="flex-1 h-px bg-slate-200 dark:bg-slate-700"></div>
+            <div class="auth-divider">
+                <span></span><em>o</em><span></span>
             </div>
 
-            <button
-                id="auth-google-btn"
-                class="w-full border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-100 font-medium py-2 rounded-lg flex items-center justify-center gap-2 hover:bg-slate-50 dark:hover:bg-slate-700"
-                type="button"
-            >
+            <button id="auth-google-btn" class="btn-ghost-pill" type="button">
                 <i class="ph ph-google-logo"></i>
                 <span>Continuar con Google</span>
             </button>
 
-            <p class="mt-4 text-xs text-slate-500 dark:text-slate-400 text-center">
+            <p class="auth-switch-row">
                 <span id="auth-modal-switch-text">¿Ya tienes cuenta?</span>
-                <button id="auth-modal-switch" type="button" class="text-blue-600 dark:text-blue-400 hover:underline text-xs font-semibold ml-1">
+                <button id="auth-modal-switch" type="button" class="jt-link jt-link-strong">
                     Inicia sesión aquí
                 </button>
             </p>
@@ -176,393 +181,396 @@
     </div>
 
 
-    <div id="auth-blocker" class="hidden fixed inset-0 z-50 bg-white/90 dark:bg-slate-900/90 flex flex-col items-center justify-center gap-3 text-slate-700 dark:text-slate-200" role="status" aria-live="polite">
-        <div class="h-14 w-14 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-        <div class="text-base font-semibold">Validando sesión...</div>
+    <div id="auth-blocker" class="hidden" role="status" aria-live="polite">
+        <div class="blocker-spinner"></div>
+        <div class="blocker-text">Validando sesión...</div>
     </div>
 
 
-    <!-- BARRA DE CONTROLES (auth + tema) -->
-    <div class="absolute top-4 right-4 sm:top-6 sm:right-6 z-30">
-        <div class="flex items-center gap-2">
-            <!-- Pill de estado: visible solo cuando hay sesión iniciada -->
-            <div id="auth-status" class="hidden text-xs text-slate-600 dark:text-slate-300 px-2.5 py-1.5 rounded-full bg-slate-100 dark:bg-slate-700/80 items-center gap-2 max-w-[180px] sm:max-w-none">
-                <span id="auth-sync" class="inline-block w-2 h-2 rounded-full bg-gray-400 flex-shrink-0" title="Estado de sincronización"></span>
-                <span id="auth-text" class="truncate"></span>
-                <span id="auth-uid" class="hidden"></span>
-            </div>
+    <div class="shell">
+        <main class="main">
 
-            <!-- CTAs cuando NO hay sesión (desktop) -->
-            <div id="header-auth-cta" class="hidden sm:flex items-center gap-2">
-                <button id="auth-cta-register" class="auth-cta auth-cta-secondary" onclick="openAuthModal('register')">Crear cuenta</button>
-                <button id="auth-cta-login" class="auth-cta auth-cta-primary" onclick="openAuthModal('login')">Iniciar sesión</button>
-            </div>
-
-            <!-- Cerrar sesión (desktop) -->
-            <div id="auth-controls" class="hidden md:flex items-center gap-2">
-                <button id="btn-signout" onclick="signOutUser()" class="auth-btn auth-btn-ghost auth-btn-danger hidden">
-                    <i class="ph ph-sign-out"></i>
-                    <span>Cerrar sesión</span>
-                </button>
-            </div>
-
-            <!-- Theme toggle (desktop) -->
-            <button id="theme-toggle-desktop" onclick="toggleTheme()" class="hidden md:inline-flex bg-white dark:bg-slate-800 text-slate-600 dark:text-yellow-400 p-2 rounded-full shadow-md border border-slate-200 dark:border-slate-700 hover:scale-110 transition" aria-label="Alternar tema">
-                <i class="ph ph-moon theme-icon"></i>
-            </button>
-
-            <!-- Hamburger (solo móvil) -->
-            <button id="mobile-hamburger" onclick="toggleMobileMenu()" class="md:hidden p-2 rounded bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm ml-2" aria-label="Abrir menú">
-                <i class="ph ph-list"></i>
-            </button>
-
-            <!-- Menú móvil desplegable (solo visible en móviles) -->
-            <div id="mobile-menu" class="mobile-menu md:hidden hidden">
-                <button id="auth-cta-register-mobile" onclick="openAuthModal('register'); toggleMobileMenu();" class="mm-item">
-                    <i class="ph ph-user-plus mm-icon"></i>
-                    <span>Crear cuenta</span>
-                </button>
-                <button id="auth-cta-login-mobile" onclick="openAuthModal('login'); toggleMobileMenu();" class="mm-item mm-item-primary">
-                    <i class="ph ph-sign-in mm-icon"></i>
-                    <span>Iniciar sesión</span>
-                </button>
-
-                <div class="mm-divider"></div>
-
-                <button id="btn-install-pwa" onclick="triggerInstall(); toggleMobileMenu();" class="mm-item mm-item-primary hidden">
-                    <i class="ph ph-device-mobile mm-icon"></i>
-                    <span>Instalar app</span>
-                </button>
-
-                <button id="theme-toggle-mobile" onclick="toggleTheme(); toggleMobileMenu();" class="mm-item">
-                    <i class="ph ph-moon mm-icon theme-icon"></i>
-                    <span>Cambiar tema</span>
-                </button>
-
-                <button id="btn-signout-mobile" onclick="signOutUser(); toggleMobileMenu();" class="mm-item mm-item-danger hidden">
-                    <i class="ph ph-sign-out mm-icon"></i>
-                    <span>Cerrar sesión</span>
-                </button>
-            </div>
-        </div>
-    </div>
-
-    <!-- HEADER COMPACTO -->
-    <header class="max-w-5xl mx-auto px-4 pt-16 sm:pt-20 pb-4 flex flex-col items-center gap-3 text-center">
-        <h1 class="hero-title text-2xl sm:text-3xl text-slate-900 dark:text-slate-100">Jornada de Trading</h1>
-        <div id="date-picker-wrapper" class="inline-flex items-center bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-full px-4 py-2 shadow-sm theme-transition" role="button" tabindex="0">
-            <i class="ph ph-calendar-blank text-slate-500 dark:text-slate-400 mr-2"></i>
-            <input type="date" id="datePicker" class="text-sm text-slate-700 dark:text-slate-200 bg-transparent focus:outline-none font-semibold cursor-pointer">
-        </div>
-    </header>
-
-    <!-- BARRA DE PESTAÑAS: Operar / Estadísticas (fija al hacer scroll) -->
-    <div class="jt-tabs-bar max-w-5xl mx-auto px-4">
-        <div class="jt-tabs" role="tablist" aria-label="Secciones de Jornada">
-            <button id="jt-tab-operar" class="jt-tab is-active" role="tab" aria-selected="true" onclick="switchJornadaTab('operar')">
-                <i class="ph ph-pencil-simple"></i> Operar
-            </button>
-            <button id="jt-tab-stats" class="jt-tab" role="tab" aria-selected="false" onclick="switchJornadaTab('stats')">
-                <i class="ph ph-chart-pie"></i> Estadísticas
-            </button>
-        </div>
-    </div>
-
-    <!-- ===================== PESTAÑA: OPERAR ===================== -->
-    <div id="tab-operar" class="jt-panel">
-
-    <!-- TARJETA KPI UNIFICADA: Capital inicial / Capital actual / Profit del día -->
-    <div class="max-w-5xl mx-auto px-4 mb-6">
-        <div class="kpi-card theme-transition">
-            <!-- Capital inicial (editable) -->
-            <div class="kpi-cell">
-                <div class="kpi-label">
-                    <i class="ph ph-wallet text-slate-400"></i>
-                    <span id="kpi-label-initial">Capital inicial</span>
-                </div>
-                <div class="kpi-input-wrap is-static">
-                    <span id="kpi-currency-symbol" class="kpi-currency-symbol">$</span>
-                    <input type="number" step="0.01" min="0.01" id="capital-input" placeholder="1000"
-                        class="kpi-input" readonly tabindex="-1" aria-readonly="true">
-                </div>
-            </div>
-
-            <!-- Capital acumulado (lectura) -->
-            <div class="kpi-cell kpi-cell-center">
-                <div id="kpi-label-current" class="kpi-label kpi-label-muted">Capital actual</div>
-                <div id="capital-abs-display" class="kpi-value tabular-nums">--</div>
-                <div id="capital-pct-display" class="kpi-hint tabular-nums">&nbsp;</div>
-            </div>
-
-            <!-- Profit del día (lectura) -->
-            <div class="kpi-cell kpi-cell-end">
-                <div class="kpi-label kpi-label-muted">Profit del día</div>
-                <div id="main-profit-display" class="kpi-value tabular-nums">
-                    <span class="text-slate-400">0.00%</span>
-                </div>
-            </div>
-
-            <!-- Sparkline de evolución del capital (últimos 30 días) -->
-            <div id="capital-sparkline-wrap" class="kpi-sparkline-wrap">
-                <div class="kpi-sparkline-header">
-                    <span class="kpi-sparkline-title">Evolución del capital</span>
-                    <span id="capital-sparkline-meta" class="kpi-sparkline-meta tabular-nums"></span>
-                </div>
-                <div id="capital-sparkline" class="kpi-sparkline" aria-hidden="true"></div>
-            </div>
-        </div>
-
-        <!-- Toggle de modo de visualización: dólares o porcentaje. El % se calcula
-             siempre contra el capital inicial. La fuente de verdad sigue siendo $. -->
-        <div class="display-mode-bar" role="group" aria-label="Modo de visualización">
-            <div class="cap-move-actions">
-                <button type="button" class="capmove-btn is-deposit" onclick="openCapMoveModal('deposits')" aria-label="Depósitos de capital">
-                    <i class="ph ph-piggy-bank"></i>
-                    <span>Depósitos</span>
-                    <span id="deposit-total-chip" class="withdraw-total-chip chip-pos hidden"></span>
-                </button>
-                <button type="button" class="capmove-btn is-withdraw" onclick="openCapMoveModal('withdrawals')" aria-label="Retiros de capital">
-                    <i class="ph ph-money"></i>
-                    <span>Retiros</span>
-                    <span id="withdraw-total-chip" class="withdraw-total-chip chip-neg hidden"></span>
-                </button>
-            </div>
-            <span class="display-mode-label">Mostrar como</span>
-            <div class="display-mode-switch">
-                <button type="button" data-display-mode="dollars" class="display-mode-btn is-active" onclick="setDisplayMode('dollars')">$</button>
-                <button type="button" data-display-mode="percent" class="display-mode-btn" onclick="setDisplayMode('percent')">%</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- SECCIÓN PRINCIPAL: INPUTS -->
-    <div class="max-w-6xl mx-auto px-4 grid grid-cols-1 md:grid-cols-2 gap-6 lg:gap-8">
-
-        <!-- TAKE PROFIT -->
-        <div class="panel overflow-hidden theme-transition">
-            <div class="panel-header bg-green-50 dark:bg-green-900/20 border-b border-green-100 dark:border-green-900/30">
-                <i class="ph ph-trend-up text-green-500"></i>
-                <h2 class="font-bold text-green-700 dark:text-green-400">Take Profit</h2>
-            </div>
-            <div class="panel-body">
-                <!-- Inputs: Activo (50%) + Porcentaje (37%) + Botón cuadrado (+) -->
-                <div class="trade-row mb-3">
-                    <input type="text" id="tp-asset" placeholder="Activo (BTC)"
-                        class="custom-input trade-asset px-3 py-2 rounded text-sm placeholder-slate-400 uppercase font-bold" inputmode="text">
-                    <input type="number" step="0.01" min="0.01" id="tp-input" placeholder="$ 0.00"
-                        class="custom-input trade-pct px-3 py-2 rounded text-sm placeholder-slate-400" inputmode="decimal">
-                    <button onclick="addEntry('tp')" class="trade-add-btn" aria-label="Agregar Take Profit">
-                        <i class="ph ph-plus"></i>
-                    </button>
-                </div>
-
-                <button type="button" data-details-toggle="tp" onclick="toggleAddDetails('tp')" class="details-toggle mb-3" aria-expanded="false">
-                    <i class="ph ph-caret-down details-toggle-chevron"></i>
-                    <span>Detalles del trade (opcional)</span>
-                </button>
-                <div id="tp-details-panel" class="details-panel hidden mb-4">
-                    <div class="details-grid">
-                        <label class="details-field">
-                            <span>Tipo</span>
-                            <select id="tp-side" class="details-input">
-                                <option value="">—</option>
-                                <option value="LONG">LONG</option>
-                                <option value="SHORT">SHORT</option>
-                            </select>
-                        </label>
-                        <label class="details-field">
-                            <span>Apalancamiento</span>
-                            <div class="details-input-wrap">
-                                <input id="tp-leverage" type="number" step="1" min="1" placeholder="0" class="details-input details-input-with-suffix" inputmode="numeric" />
-                                <span class="details-input-suffix">X</span>
-                            </div>
-                        </label>
-                        <label class="details-field">
-                            <span>Precio entrada</span>
-                            <input id="tp-entry" type="number" step="any" placeholder="0.00" class="details-input" inputmode="decimal" />
-                        </label>
-                        <label class="details-field">
-                            <span>Stop Loss</span>
-                            <input id="tp-sl-price" type="number" step="any" placeholder="0.00" class="details-input" inputmode="decimal" />
-                        </label>
-                        <label class="details-field" data-target-slot data-target-index="1">
-                            <span>Target 1</span>
-                            <input type="number" step="any" placeholder="0.00" class="details-input target-input" inputmode="decimal" />
-                        </label>
-                        <label class="details-field details-field-wide">
-                            <span>Notas</span>
-                            <textarea id="tp-notes" rows="2" placeholder="Análisis, contexto, etc." class="details-input details-textarea" maxlength="500"></textarea>
-                        </label>
+            <!-- BARRA SUPERIOR (auth + tema + menú) -->
+            <header class="topbar">
+                <div class="user-zone">
+                    <!-- Pill de estado: visible solo cuando hay sesión iniciada -->
+                    <div id="auth-status" class="user-chip hidden items-center gap-2">
+                        <span class="avatar" aria-hidden="true"><i class="ph ph-user"></i></span>
+                        <span id="auth-sync" class="inline-block w-2 h-2 rounded-full bg-gray-400 flex-shrink-0" title="Estado de sincronización"></span>
+                        <span id="auth-text" class="truncate"></span>
+                        <span id="auth-uid" class="hidden"></span>
                     </div>
-                    <button type="button" class="details-add-target" data-add-target="tp" onclick="addTargetSlot('tp')">
-                        <i class="ph ph-plus"></i> Añadir target
-                    </button>
-                </div>
 
-                <div class="stat-pill border-green-100 dark:border-green-900/30 bg-green-50 dark:bg-green-900/10 mb-6">
-                    <span class="font-bold text-slate-700 dark:text-slate-300 text-sm">Total:</span>
-                    <span class="font-bold text-green-600 dark:text-green-400 text-lg" id="tp-total-display">0.00%</span>
-                </div>
-                <div class="flex justify-end items-center mb-3">
-                    <button onclick="clearList('tp')" class="text-xs border border-slate-200 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-700 px-3 py-1 rounded text-slate-500 dark:text-slate-400 transition">Limpiar</button>
-                </div>
-                <div id="tp-list" class="space-y-2 min-h-[50px]">
-                    <div class="text-center text-slate-300 dark:text-slate-600 text-sm py-4">No hay registros</div>
-                </div>
-            </div>
-        </div>
-
-        <!-- STOP LOSS -->
-        <div class="panel overflow-hidden theme-transition">
-            <div class="panel-header bg-red-50 dark:bg-red-900/20 border-b border-red-100 dark:border-red-900/30">
-                <i class="ph ph-trend-down text-red-500"></i>
-                <h2 class="font-bold text-red-700 dark:text-red-400">Stop Loss</h2>
-            </div>
-            <div class="panel-body">
-                <div class="trade-row mb-3">
-                    <input type="text" id="sl-asset" placeholder="Activo (BTC)"
-                        class="custom-input trade-asset px-3 py-2 rounded text-sm placeholder-slate-400 uppercase font-bold" inputmode="text">
-                    <input type="number" step="0.01" min="0.01" id="sl-input" placeholder="$ 0.00"
-                        class="custom-input trade-pct px-3 py-2 rounded text-sm placeholder-slate-400" inputmode="decimal">
-                    <button onclick="addEntry('sl')" class="trade-add-btn" aria-label="Agregar Stop Loss">
-                        <i class="ph ph-plus"></i>
-                    </button>
-                </div>
-
-                <button type="button" data-details-toggle="sl" onclick="toggleAddDetails('sl')" class="details-toggle mb-3" aria-expanded="false">
-                    <i class="ph ph-caret-down details-toggle-chevron"></i>
-                    <span>Detalles del trade (opcional)</span>
-                </button>
-                <div id="sl-details-panel" class="details-panel hidden mb-4">
-                    <div class="details-grid">
-                        <label class="details-field">
-                            <span>Tipo</span>
-                            <select id="sl-side" class="details-input">
-                                <option value="">—</option>
-                                <option value="LONG">LONG</option>
-                                <option value="SHORT">SHORT</option>
-                            </select>
-                        </label>
-                        <label class="details-field">
-                            <span>Apalancamiento</span>
-                            <div class="details-input-wrap">
-                                <input id="sl-leverage" type="number" step="1" min="1" placeholder="0" class="details-input details-input-with-suffix" inputmode="numeric" />
-                                <span class="details-input-suffix">X</span>
-                            </div>
-                        </label>
-                        <label class="details-field">
-                            <span>Precio entrada</span>
-                            <input id="sl-entry" type="number" step="any" placeholder="0.00" class="details-input" inputmode="decimal" />
-                        </label>
-                        <label class="details-field">
-                            <span>Stop Loss</span>
-                            <input id="sl-sl-price" type="number" step="any" placeholder="0.00" class="details-input" inputmode="decimal" />
-                        </label>
-                        <label class="details-field" data-target-slot data-target-index="1">
-                            <span>Target 1</span>
-                            <input type="number" step="any" placeholder="0.00" class="details-input target-input" inputmode="decimal" />
-                        </label>
-                        <label class="details-field details-field-wide">
-                            <span>Notas</span>
-                            <textarea id="sl-notes" rows="2" placeholder="Qué falló, lección aprendida, etc." class="details-input details-textarea" maxlength="500"></textarea>
-                        </label>
+                    <!-- CTAs cuando NO hay sesión (desktop) -->
+                    <div id="header-auth-cta" class="desktop-only cta-zone">
+                        <button id="auth-cta-register" class="auth-cta auth-cta-secondary" onclick="openAuthModal('register')">Crear cuenta</button>
+                        <button id="auth-cta-login" class="auth-cta auth-cta-primary" onclick="openAuthModal('login')">Iniciar sesión</button>
                     </div>
-                    <button type="button" class="details-add-target" data-add-target="sl" onclick="addTargetSlot('sl')">
-                        <i class="ph ph-plus"></i> Añadir target
+                </div>
+
+                <div class="top-actions">
+                    <!-- Cerrar sesión (desktop) -->
+                    <div id="auth-controls" class="desktop-only cta-zone">
+                        <button id="btn-signout" onclick="signOutUser()" class="btn-out hidden">
+                            <i class="ph ph-sign-out"></i>
+                            <span>Cerrar sesión</span>
+                        </button>
+                    </div>
+
+                    <!-- Theme toggle (desktop): pill con knob degradado -->
+                    <button id="theme-toggle-desktop" onclick="toggleTheme()" class="theme-pill desktop-only" aria-label="Alternar tema">
+                        <i class="ph ph-sun" aria-hidden="true"></i>
+                        <i class="ph ph-moon" aria-hidden="true"></i>
+                        <span class="t-knob" aria-hidden="true"></span>
                     </button>
-                </div>
 
-                <div class="stat-pill border-red-100 dark:border-red-900/30 bg-red-50 dark:bg-red-900/10 mb-6">
-                    <span class="font-bold text-slate-700 dark:text-slate-300 text-sm">Total:</span>
-                    <span class="font-bold text-red-600 dark:text-red-400 text-lg" id="sl-total-display">0.00%</span>
-                </div>
-                <div class="flex justify-end items-center mb-3">
-                    <button onclick="clearList('sl')" class="text-xs border border-slate-200 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-700 px-3 py-1 rounded text-slate-500 dark:text-slate-400 transition">Limpiar</button>
-                </div>
-                <div id="sl-list" class="space-y-2 min-h-[50px]">
-                    <div class="text-center text-slate-300 dark:text-slate-600 text-sm py-4">No hay registros</div>
-                </div>
-            </div>
-        </div>
-    </div>
+                    <!-- Hamburger (solo móvil) -->
+                    <button id="mobile-hamburger" onclick="toggleMobileMenu()" class="hamburger-btn mobile-only" aria-label="Abrir menú">
+                        <i class="ph ph-list"></i>
+                    </button>
 
-    <!-- RESUMEN DE OPERACIÓN (TARJETA INFERIOR) -->
-    <div class="max-w-6xl mx-auto px-4 mt-8">
-        <div id="summary-card" class="muted-card backdrop-blur theme-transition text-center p-8">
-            <h3 class="text-slate-700 dark:text-slate-300 font-bold mb-6 text-lg">Balance del día</h3>
-            
-            <div class="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-8">
-                <div class="sub-surface p-4 text-center">
-                    <div class="text-xs text-slate-500 dark:text-slate-400 mb-1">Take Profit</div>
-                    <div class="font-bold text-green-600 dark:text-green-400 text-lg" id="footer-tp">+0.00%</div>
-                </div>
-                <div class="sub-surface p-4 text-center">
-                    <div class="text-xs text-slate-500 dark:text-slate-400 mb-1">Stop Loss</div>
-                    <div class="font-bold text-red-600 dark:text-red-400 text-lg" id="footer-sl">-0.00%</div>
-                </div>
-                <div class="sub-surface p-4 text-center">
-                    <div class="text-xs text-slate-500 dark:text-slate-400 mb-1">Neto</div>
-                    <div class="font-bold text-lg" id="footer-net">0.00%</div>
-                </div>
-            </div>
+                    <!-- Menú móvil desplegable (solo visible en móviles) -->
+                    <div id="mobile-menu" class="mobile-menu hidden">
+                        <button id="auth-cta-register-mobile" onclick="openAuthModal('register'); toggleMobileMenu();" class="mm-item">
+                            <i class="ph ph-user-plus mm-icon"></i>
+                            <span>Crear cuenta</span>
+                        </button>
+                        <button id="auth-cta-login-mobile" onclick="openAuthModal('login'); toggleMobileMenu();" class="mm-item mm-item-primary">
+                            <i class="ph ph-sign-in mm-icon"></i>
+                            <span>Iniciar sesión</span>
+                        </button>
 
-            <div class="flex flex-wrap justify-center gap-3">
-                <button onclick="clearAll()" class="border border-red-400 dark:border-red-500 text-red-500 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 px-4 py-2 rounded text-sm font-medium transition">
-                    Limpiar todos los datos
-                </button>
-            </div>
-        </div>
-    </div>
+                        <div class="mm-divider"></div>
 
-    </div><!-- /#tab-operar -->
+                        <button id="btn-install-pwa" onclick="triggerInstall(); toggleMobileMenu();" class="mm-item mm-item-primary hidden">
+                            <i class="ph ph-device-mobile mm-icon"></i>
+                            <span>Instalar app</span>
+                        </button>
 
-    <!-- ===================== PESTAÑA: ESTADÍSTICAS ===================== -->
-    <div id="tab-stats" class="jt-panel hidden">
+                        <button id="theme-toggle-mobile" onclick="toggleTheme(); toggleMobileMenu();" class="mm-item">
+                            <i class="ph ph-moon mm-icon theme-icon"></i>
+                            <span>Cambiar tema</span>
+                        </button>
 
-    <!-- ESTADÍSTICAS (scoreboard global) -->
-    <div class="max-w-6xl mx-auto px-4 mt-8">
-        <div class="muted-card backdrop-blur theme-transition p-6 sm:p-8">
-            <div class="flex items-center justify-between mb-5 gap-3 flex-wrap">
-                <h3 class="text-slate-700 dark:text-slate-300 font-bold text-lg flex items-center gap-2">
-                    <i class="ph ph-chart-pie text-blue-500 dark:text-blue-400"></i> Estadísticas
-                </h3>
-            </div>
-            <!-- Movimientos de capital: depósitos y retiros (oculto si no hay) -->
-            <div id="capital-movements" class="cap-moves hidden">
-                <div class="cap-move">
-                    <span class="cap-move-label"><i class="ph ph-piggy-bank text-green-600 dark:text-green-400"></i> Depositado</span>
-                    <span id="stats-deposited" class="cap-move-val pos">$0.00</span>
+                        <button id="btn-signout-mobile" onclick="signOutUser(); toggleMobileMenu();" class="mm-item mm-item-danger hidden">
+                            <i class="ph ph-sign-out mm-icon"></i>
+                            <span>Cerrar sesión</span>
+                        </button>
+                    </div>
                 </div>
-                <div class="cap-move">
-                    <span class="cap-move-label"><i class="ph ph-money text-red-500 dark:text-red-400"></i> Retirado</span>
-                    <span id="stats-withdrawn" class="cap-move-val neg">$0.00</span>
+            </header>
+
+            <!-- TÍTULO + FECHA -->
+            <div class="titlebar">
+                <div>
+                    <h1>Jornada de Trading</h1>
+                    <p class="title-sub">Diario de operaciones · <b>disciplina diaria</b></p>
+                </div>
+                <div id="date-picker-wrapper" class="date-pill" role="button" tabindex="0">
+                    <i class="ph ph-calendar-blank date-ico" aria-hidden="true"></i>
+                    <input type="date" id="datePicker" class="date-input tabular-nums">
+                    <i class="ph ph-caret-down date-chev" aria-hidden="true"></i>
                 </div>
             </div>
-            <div id="stats-kpis" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3"></div>
-        </div>
-    </div>
 
-    <!-- RESÚMENES MENSUALES (dentro de la pestaña Estadísticas) -->
-    <div id="summaries-section" class="max-w-6xl mx-auto px-4 mt-8 space-y-6">
+            <!-- ===================== PESTAÑA: OPERAR ===================== -->
+            <div id="tab-operar" class="jt-panel">
+                <div class="bento">
 
-        <!-- Loading indicator for summaries -->
-        <div id="summaries-loading" class="hidden flex justify-center mt-4">
-            <div class="spinner" aria-hidden="true"></div>
-        </div>
+                    <!-- HÉROE: capital actual -->
+                    <article class="mod m-hero">
+                        <div class="hero-top">
+                            <span id="kpi-label-current" class="k-lab">Capital actual</span>
+                            <div id="capital-pct-display" class="kpi-hint tabular-nums">&nbsp;</div>
+                        </div>
+                        <div id="capital-abs-display" class="hero-num tabular-nums">--</div>
+                        <div class="hero-foot">
+                            <div class="hf-item">
+                                <span id="kpi-label-initial" class="k-lab">Capital inicial</span>
+                                <span class="hf-edit">
+                                    <span id="kpi-currency-symbol" class="hf-cur">$</span>
+                                    <input type="number" step="0.01" min="0.01" id="capital-input" placeholder="1000"
+                                        class="inp-inline tabular-nums" readonly tabindex="-1" aria-readonly="true">
+                                </span>
+                            </div>
+                            <span class="hf-sep" aria-hidden="true"></span>
+                            <div class="hf-item">
+                                <span class="k-lab">Profit del día</span>
+                                <div id="main-profit-display" class="hf-num tabular-nums">
+                                    <span class="text-slate-400">0.00%</span>
+                                </div>
+                            </div>
+                        </div>
+                    </article>
 
-        <!-- Resumen mensual: única vista. Cada tarjeta es expandible y muestra el heatmap del mes. -->
-        <div id="monthly-panel" class="panel theme-transition p-6">
-            <h3 class="font-bold text-slate-800 dark:text-slate-100 mb-4 flex items-center gap-2">
-                <i class="ph ph-calendar-blank"></i> Resumen Mensual
-            </h3>
-            <div id="monthly-summaries" class="mt-2 space-y-4">
-                <!-- JS insertará tarjetas mensuales -->
-            </div>
-        </div>
+                    <!-- SPARKLINE: evolución del capital -->
+                    <article class="mod m-spark">
+                        <div id="capital-sparkline-wrap" class="kpi-sparkline-wrap">
+                            <div class="kpi-sparkline-header">
+                                <span class="kpi-sparkline-title k-lab">Evolución del capital</span>
+                                <span id="capital-sparkline-meta" class="kpi-sparkline-meta tabular-nums"></span>
+                            </div>
+                            <div id="capital-sparkline" class="kpi-sparkline" aria-hidden="true"></div>
+                        </div>
+                    </article>
 
-    </div>
+                    <!-- ACCIONES: depósitos / retiros / toggle $-% -->
+                    <div class="m-actions">
+                        <button class="mod mini-act mini-dep" type="button" onclick="openCapMoveModal('deposits')" aria-label="Depósitos de capital">
+                            <span class="ma-top"><i class="ph ph-arrow-line-down" aria-hidden="true"></i> Depósitos</span>
+                            <span id="deposit-total-chip" class="ma-chip tabular-nums hidden"></span>
+                        </button>
+                        <button class="mod mini-act mini-ret" type="button" onclick="openCapMoveModal('withdrawals')" aria-label="Retiros de capital">
+                            <span class="ma-top"><i class="ph ph-arrow-line-up" aria-hidden="true"></i> Retiros</span>
+                            <span id="withdraw-total-chip" class="ma-chip tabular-nums hidden"></span>
+                        </button>
+                        <div class="mod m-toggle" role="group" aria-label="Modo de visualización">
+                            <span class="k-lab">Mostrar como</span>
+                            <div class="display-mode-switch">
+                                <button type="button" data-display-mode="dollars" class="display-mode-btn is-active" onclick="setDisplayMode('dollars')">$</button>
+                                <button type="button" data-display-mode="percent" class="display-mode-btn" onclick="setDisplayMode('percent')">%</button>
+                            </div>
+                        </div>
+                    </div>
 
-    </div><!-- /#tab-stats -->
+                    <!-- PANEL TAKE PROFIT -->
+                    <article class="mod panel panel-tp">
+                        <header class="p-head">
+                            <span class="p-ico i-g" aria-hidden="true"><i class="ph ph-trend-up"></i></span>
+                            <div>
+                                <h2>Take Profit</h2>
+                                <span class="p-sub">Registra tus ganancias del día</span>
+                            </div>
+                        </header>
+
+                        <div class="p-form">
+                            <input type="text" id="tp-asset" placeholder="Activo (BTC)"
+                                class="inp inp-act uppercase" inputmode="text">
+                            <input type="number" step="0.01" min="0.01" id="tp-input" placeholder="$ 0.00"
+                                class="inp inp-amt tabular-nums" inputmode="decimal">
+                            <button onclick="addEntry('tp')" class="btn-add add-g trade-add-btn" aria-label="Agregar Take Profit">
+                                <i class="ph ph-plus"></i>
+                            </button>
+                        </div>
+
+                        <button type="button" data-details-toggle="tp" onclick="toggleAddDetails('tp')" class="details-toggle" aria-expanded="false">
+                            <span>Detalles del trade (opcional)</span>
+                            <i class="ph ph-caret-down details-toggle-chevron" aria-hidden="true"></i>
+                        </button>
+                        <div id="tp-details-panel" class="details-panel hidden">
+                            <div class="details-grid">
+                                <label class="details-field">
+                                    <span>Tipo</span>
+                                    <select id="tp-side" class="details-input">
+                                        <option value="">—</option>
+                                        <option value="LONG">LONG</option>
+                                        <option value="SHORT">SHORT</option>
+                                    </select>
+                                </label>
+                                <label class="details-field">
+                                    <span>Apalancamiento</span>
+                                    <div class="details-input-wrap">
+                                        <input id="tp-leverage" type="number" step="1" min="1" placeholder="0" class="details-input details-input-with-suffix" inputmode="numeric" />
+                                        <span class="details-input-suffix">X</span>
+                                    </div>
+                                </label>
+                                <label class="details-field">
+                                    <span>Precio entrada</span>
+                                    <input id="tp-entry" type="number" step="any" placeholder="0.00" class="details-input" inputmode="decimal" />
+                                </label>
+                                <label class="details-field">
+                                    <span>Stop Loss</span>
+                                    <input id="tp-sl-price" type="number" step="any" placeholder="0.00" class="details-input" inputmode="decimal" />
+                                </label>
+                                <label class="details-field" data-target-slot data-target-index="1">
+                                    <span>Target 1</span>
+                                    <input type="number" step="any" placeholder="0.00" class="details-input target-input" inputmode="decimal" />
+                                </label>
+                                <label class="details-field details-field-wide">
+                                    <span>Notas</span>
+                                    <textarea id="tp-notes" rows="2" placeholder="Análisis, contexto, etc." class="details-input details-textarea" maxlength="500"></textarea>
+                                </label>
+                            </div>
+                            <button type="button" class="details-add-target" data-add-target="tp" onclick="addTargetSlot('tp')">
+                                <i class="ph ph-plus"></i> Añadir target
+                            </button>
+                        </div>
+
+                        <div class="p-foot">
+                            <span class="total-pill t-g">Total: <span id="tp-total-display" class="tabular-nums">0.00%</span></span>
+                            <button onclick="clearList('tp')" class="btn-clear" type="button">Limpiar</button>
+                        </div>
+
+                        <div id="tp-list" class="space-y-2 min-h-[50px]">
+                            <div class="text-center text-slate-300 dark:text-slate-600 text-sm py-4">No hay registros</div>
+                        </div>
+                    </article>
+
+                    <!-- PANEL STOP LOSS -->
+                    <article class="mod panel panel-sl">
+                        <header class="p-head">
+                            <span class="p-ico i-r" aria-hidden="true"><i class="ph ph-trend-down"></i></span>
+                            <div>
+                                <h2>Stop Loss</h2>
+                                <span class="p-sub">Registra tus pérdidas del día</span>
+                            </div>
+                        </header>
+
+                        <div class="p-form">
+                            <input type="text" id="sl-asset" placeholder="Activo (BTC)"
+                                class="inp inp-act uppercase" inputmode="text">
+                            <input type="number" step="0.01" min="0.01" id="sl-input" placeholder="$ 0.00"
+                                class="inp inp-amt tabular-nums" inputmode="decimal">
+                            <button onclick="addEntry('sl')" class="btn-add add-r trade-add-btn" aria-label="Agregar Stop Loss">
+                                <i class="ph ph-plus"></i>
+                            </button>
+                        </div>
+
+                        <button type="button" data-details-toggle="sl" onclick="toggleAddDetails('sl')" class="details-toggle" aria-expanded="false">
+                            <span>Detalles del trade (opcional)</span>
+                            <i class="ph ph-caret-down details-toggle-chevron" aria-hidden="true"></i>
+                        </button>
+                        <div id="sl-details-panel" class="details-panel hidden">
+                            <div class="details-grid">
+                                <label class="details-field">
+                                    <span>Tipo</span>
+                                    <select id="sl-side" class="details-input">
+                                        <option value="">—</option>
+                                        <option value="LONG">LONG</option>
+                                        <option value="SHORT">SHORT</option>
+                                    </select>
+                                </label>
+                                <label class="details-field">
+                                    <span>Apalancamiento</span>
+                                    <div class="details-input-wrap">
+                                        <input id="sl-leverage" type="number" step="1" min="1" placeholder="0" class="details-input details-input-with-suffix" inputmode="numeric" />
+                                        <span class="details-input-suffix">X</span>
+                                    </div>
+                                </label>
+                                <label class="details-field">
+                                    <span>Precio entrada</span>
+                                    <input id="sl-entry" type="number" step="any" placeholder="0.00" class="details-input" inputmode="decimal" />
+                                </label>
+                                <label class="details-field">
+                                    <span>Stop Loss</span>
+                                    <input id="sl-sl-price" type="number" step="any" placeholder="0.00" class="details-input" inputmode="decimal" />
+                                </label>
+                                <label class="details-field" data-target-slot data-target-index="1">
+                                    <span>Target 1</span>
+                                    <input type="number" step="any" placeholder="0.00" class="details-input target-input" inputmode="decimal" />
+                                </label>
+                                <label class="details-field details-field-wide">
+                                    <span>Notas</span>
+                                    <textarea id="sl-notes" rows="2" placeholder="Qué falló, lección aprendida, etc." class="details-input details-textarea" maxlength="500"></textarea>
+                                </label>
+                            </div>
+                            <button type="button" class="details-add-target" data-add-target="sl" onclick="addTargetSlot('sl')">
+                                <i class="ph ph-plus"></i> Añadir target
+                            </button>
+                        </div>
+
+                        <div class="p-foot">
+                            <span class="total-pill t-r">Total: <span id="sl-total-display" class="tabular-nums">0.00%</span></span>
+                            <button onclick="clearList('sl')" class="btn-clear" type="button">Limpiar</button>
+                        </div>
+
+                        <div id="sl-list" class="space-y-2 min-h-[50px]">
+                            <div class="text-center text-slate-300 dark:text-slate-600 text-sm py-4">No hay registros</div>
+                        </div>
+                    </article>
+
+                    <!-- BALANCE DEL DÍA -->
+                    <article id="summary-card" class="mod m-balance">
+                        <span class="k-lab">Balance del día</span>
+                        <div class="bal-row">
+                            <div class="bal-pill">
+                                <span class="bp-lab"><i class="dot dot-g" aria-hidden="true"></i>Take Profit</span>
+                                <span id="footer-tp" class="bp-num gain tabular-nums">+0.00%</span>
+                            </div>
+                            <div class="bal-pill">
+                                <span class="bp-lab"><i class="dot dot-r" aria-hidden="true"></i>Stop Loss</span>
+                                <span id="footer-sl" class="bp-num loss tabular-nums">-0.00%</span>
+                            </div>
+                            <div class="bal-pill bp-neto">
+                                <span class="bp-lab">Neto</span>
+                                <span id="footer-net" class="font-bold text-lg tabular-nums">0.00%</span>
+                            </div>
+                            <button onclick="clearAll()" class="btn-danger" type="button">
+                                Limpiar todos los datos
+                            </button>
+                        </div>
+                    </article>
+
+                </div>
+            </div><!-- /#tab-operar -->
+
+            <!-- ===================== PESTAÑA: ESTADÍSTICAS ===================== -->
+            <div id="tab-stats" class="jt-panel hidden">
+                <div class="bento">
+
+                    <!-- ESTADÍSTICAS (scoreboard global) -->
+                    <section class="mod m-stats">
+                        <header class="p-head">
+                            <span class="p-ico i-cy" aria-hidden="true"><i class="ph ph-chart-pie"></i></span>
+                            <div>
+                                <h2>Estadísticas</h2>
+                                <span class="p-sub">Rendimiento global de tu cuenta</span>
+                            </div>
+                        </header>
+
+                        <!-- Movimientos de capital: depósitos y retiros (oculto si no hay) -->
+                        <div id="capital-movements" class="cap-moves hidden">
+                            <div class="cap-move">
+                                <span class="cap-move-label"><i class="dot dot-cy" aria-hidden="true"></i> Depositado</span>
+                                <span id="stats-deposited" class="cap-move-val pos tabular-nums">$0.00</span>
+                            </div>
+                            <div class="cap-move">
+                                <span class="cap-move-label"><i class="dot dot-li" aria-hidden="true"></i> Retirado</span>
+                                <span id="stats-withdrawn" class="cap-move-val neg tabular-nums">$0.00</span>
+                            </div>
+                        </div>
+
+                        <div id="stats-kpis" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3"></div>
+                    </section>
+
+                    <!-- RESÚMENES MENSUALES -->
+                    <div id="summaries-section" class="m-months-wrap">
+
+                        <!-- Loading indicator for summaries -->
+                        <div id="summaries-loading" class="hidden flex justify-center summaries-loading-row">
+                            <div class="spinner" aria-hidden="true"></div>
+                        </div>
+
+                        <!-- Resumen mensual: cada tarjeta es expandible y muestra el heatmap del mes. -->
+                        <section id="monthly-panel" class="mod m-months">
+                            <h2 class="mod-title"><i class="ph ph-calendar-blank" aria-hidden="true"></i> Resumen Mensual</h2>
+                            <div id="monthly-summaries" class="months-list">
+                                <!-- JS insertará tarjetas mensuales -->
+                            </div>
+                        </section>
+
+                    </div>
+
+                </div>
+            </div><!-- /#tab-stats -->
+
+        </main>
+
+        <!-- RAIL DE NAVEGACIÓN (barra inferior en móvil) -->
+        <nav class="rail" role="tablist" aria-label="Secciones de Jornada">
+            <span class="rail-brand" aria-hidden="true">JT</span>
+            <span class="rail-sep" aria-hidden="true"></span>
+            <button id="jt-tab-operar" class="rail-btn jt-tab is-active" role="tab" aria-selected="true" onclick="switchJornadaTab('operar')">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3v3M7 15v6M17 5v4M17 17v4"/><rect x="4.5" y="6" width="5" height="9" rx="1.5"/><rect x="14.5" y="9" width="5" height="8" rx="1.5"/></svg>
+                <span>Operar</span>
+            </button>
+            <button id="jt-tab-stats" class="rail-btn jt-tab" role="tab" aria-selected="false" onclick="switchJornadaTab('stats')">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20v-7M12 20V5M19 20v-10"/><path d="M3 21h18"/></svg>
+                <span>Estadísticas</span>
+            </button>
+            <span class="rail-dot" aria-hidden="true"></span>
+        </nav>
+    </div><!-- /.shell -->
 
     <!-- Lógica de pestañas (Operar / Estadísticas) -->
     <script>
@@ -588,93 +596,93 @@
     <!-- MODAL Y TOASTS (ELEMENTOS) -->
     <div id="toast-container" class="fixed top-6 right-6 z-50 space-y-2"></div>
 
-    <div id="modal-overlay" class="hidden fixed inset-0 z-[60] flex items-center justify-center bg-black bg-opacity-50">
-        <div class="bg-white dark:bg-slate-800 rounded-lg w-11/12 max-w-md p-4 shadow-lg">
-            <div id="modal-message" class="text-slate-800 dark:text-slate-100 mb-4"></div>
-            <div class="flex justify-end gap-2">
-                <button id="modal-cancel" class="px-3 py-1 rounded border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200">Cancelar</button>
-                <button id="modal-confirm" class="px-3 py-1 rounded bg-blue-500 text-white">Aceptar</button>
+    <div id="modal-overlay" class="jt-overlay jt-overlay-top hidden">
+        <div class="jt-modal-card jt-modal-sm">
+            <div id="modal-message" class="jt-modal-message"></div>
+            <div class="jt-modal-actions">
+                <button id="modal-cancel" class="btn-clear">Cancelar</button>
+                <button id="modal-confirm" class="btn-danger-solid">Aceptar</button>
             </div>
         </div>
     </div>
 
     <!-- MODAL: RETIROS DE CAPITAL -->
-    <div id="withdraw-modal-overlay" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
-        <div class="bg-white dark:bg-slate-800 rounded-xl w-full max-w-md p-5 shadow-xl relative">
-            <button onclick="closeCapMoveModal('withdrawals')" class="absolute top-3 right-3 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200" aria-label="Cerrar">
+    <div id="withdraw-modal-overlay" class="jt-overlay hidden">
+        <div class="jt-modal-card">
+            <button onclick="closeCapMoveModal('withdrawals')" class="jt-modal-close" aria-label="Cerrar">
                 <i class="ph ph-x"></i>
             </button>
-            <div class="flex items-center gap-2 mb-1">
-                <i class="ph ph-money text-red-500 dark:text-red-400"></i>
-                <h3 class="text-lg font-bold text-slate-800 dark:text-slate-100">Retiros de capital</h3>
+            <div class="capmove-head">
+                <span class="p-ico i-li" aria-hidden="true"><i class="ph ph-arrow-line-up"></i></span>
+                <h3>Retiros de capital</h3>
             </div>
-            <p class="text-xs text-slate-500 dark:text-slate-400 mb-4">Registra el dinero que <b>sacas</b> de la cuenta. Se resta del <b>capital actual</b>, pero no afecta tu <b>capital inicial</b> ni tu rendimiento.</p>
+            <p class="capmove-sub">Registra el dinero que <b>sacas</b> de la cuenta. Se resta del <b>capital actual</b>, pero no afecta tu <b>capital inicial</b> ni tu rendimiento.</p>
 
-            <div class="space-y-3">
-                <div class="grid grid-cols-2 gap-3">
+            <div class="capmove-form">
+                <div class="capmove-grid">
                     <label class="block">
-                        <span class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">Monto</span>
-                        <input id="withdraw-amount" type="number" step="0.01" min="0.01" inputmode="decimal" placeholder="$ 0.00" class="custom-input w-full px-3 py-2 rounded text-sm placeholder-slate-400">
+                        <span class="jt-field-label">Monto</span>
+                        <input id="withdraw-amount" type="number" step="0.01" min="0.01" inputmode="decimal" placeholder="$ 0.00" class="custom-input tabular-nums">
                     </label>
                     <label class="block">
-                        <span class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">Fecha</span>
-                        <input id="withdraw-date" type="date" class="custom-input w-full px-3 py-2 rounded text-sm">
+                        <span class="jt-field-label">Fecha</span>
+                        <input id="withdraw-date" type="date" class="custom-input tabular-nums">
                     </label>
                 </div>
                 <label class="block">
-                    <span class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">Nota (opcional)</span>
-                    <input id="withdraw-note" type="text" maxlength="200" placeholder="Ej. retiro al banco" class="custom-input w-full px-3 py-2 rounded text-sm placeholder-slate-400">
+                    <span class="jt-field-label">Nota (opcional)</span>
+                    <input id="withdraw-note" type="text" maxlength="200" placeholder="Ej. retiro al banco" class="custom-input">
                 </label>
-                <button onclick="submitCapMove('withdrawals')" class="w-full bg-red-600 hover:bg-red-700 text-white font-semibold py-2 rounded-lg flex items-center justify-center gap-2">
+                <button onclick="submitCapMove('withdrawals')" class="btn-modal-submit is-ret">
                     <i class="ph ph-arrow-line-up"></i> Registrar retiro
                 </button>
             </div>
 
-            <div class="flex items-center justify-between mt-5 mb-1">
-                <span class="text-sm font-semibold text-slate-600 dark:text-slate-300">Total retirado</span>
-                <span id="withdraw-modal-total" class="text-base font-bold text-slate-800 dark:text-slate-100">$0.00</span>
+            <div class="capmove-total-row">
+                <span>Total retirado</span>
+                <span id="withdraw-modal-total" class="capmove-total tabular-nums">$0.00</span>
             </div>
-            <div id="withdraw-list" class="max-h-52 overflow-y-auto mt-1"></div>
+            <div id="withdraw-list" class="capmove-list max-h-52 overflow-y-auto"></div>
         </div>
     </div>
 
     <!-- MODAL: DEPÓSITOS DE CAPITAL -->
-    <div id="deposit-modal-overlay" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
-        <div class="bg-white dark:bg-slate-800 rounded-xl w-full max-w-md p-5 shadow-xl relative">
-            <button onclick="closeCapMoveModal('deposits')" class="absolute top-3 right-3 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200" aria-label="Cerrar">
+    <div id="deposit-modal-overlay" class="jt-overlay hidden">
+        <div class="jt-modal-card">
+            <button onclick="closeCapMoveModal('deposits')" class="jt-modal-close" aria-label="Cerrar">
                 <i class="ph ph-x"></i>
             </button>
-            <div class="flex items-center gap-2 mb-1">
-                <i class="ph ph-piggy-bank text-green-600 dark:text-green-400"></i>
-                <h3 class="text-lg font-bold text-slate-800 dark:text-slate-100">Depósitos de capital</h3>
+            <div class="capmove-head">
+                <span class="p-ico i-cy" aria-hidden="true"><i class="ph ph-arrow-line-down"></i></span>
+                <h3>Depósitos de capital</h3>
             </div>
-            <p class="text-xs text-slate-500 dark:text-slate-400 mb-4">Registra el dinero que <b>agregas</b> a la cuenta. Se suma al <b>capital actual</b>, pero no afecta tu <b>capital inicial</b> ni tu rendimiento.</p>
+            <p class="capmove-sub">Registra el dinero que <b>agregas</b> a la cuenta. Se suma al <b>capital actual</b>, pero no afecta tu <b>capital inicial</b> ni tu rendimiento.</p>
 
-            <div class="space-y-3">
-                <div class="grid grid-cols-2 gap-3">
+            <div class="capmove-form">
+                <div class="capmove-grid">
                     <label class="block">
-                        <span class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">Monto</span>
-                        <input id="deposit-amount" type="number" step="0.01" min="0.01" inputmode="decimal" placeholder="$ 0.00" class="custom-input w-full px-3 py-2 rounded text-sm placeholder-slate-400">
+                        <span class="jt-field-label">Monto</span>
+                        <input id="deposit-amount" type="number" step="0.01" min="0.01" inputmode="decimal" placeholder="$ 0.00" class="custom-input tabular-nums">
                     </label>
                     <label class="block">
-                        <span class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">Fecha</span>
-                        <input id="deposit-date" type="date" class="custom-input w-full px-3 py-2 rounded text-sm">
+                        <span class="jt-field-label">Fecha</span>
+                        <input id="deposit-date" type="date" class="custom-input tabular-nums">
                     </label>
                 </div>
                 <label class="block">
-                    <span class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">Nota (opcional)</span>
-                    <input id="deposit-note" type="text" maxlength="200" placeholder="Ej. recarga desde banco" class="custom-input w-full px-3 py-2 rounded text-sm placeholder-slate-400">
+                    <span class="jt-field-label">Nota (opcional)</span>
+                    <input id="deposit-note" type="text" maxlength="200" placeholder="Ej. recarga desde banco" class="custom-input">
                 </label>
-                <button onclick="submitCapMove('deposits')" class="w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-2 rounded-lg flex items-center justify-center gap-2">
+                <button onclick="submitCapMove('deposits')" class="btn-modal-submit is-dep">
                     <i class="ph ph-arrow-line-down"></i> Registrar depósito
                 </button>
             </div>
 
-            <div class="flex items-center justify-between mt-5 mb-1">
-                <span class="text-sm font-semibold text-slate-600 dark:text-slate-300">Total depositado</span>
-                <span id="deposit-modal-total" class="text-base font-bold text-slate-800 dark:text-slate-100">$0.00</span>
+            <div class="capmove-total-row">
+                <span>Total depositado</span>
+                <span id="deposit-modal-total" class="capmove-total tabular-nums">$0.00</span>
             </div>
-            <div id="deposit-list" class="max-h-52 overflow-y-auto mt-1"></div>
+            <div id="deposit-list" class="capmove-list max-h-52 overflow-y-auto"></div>
         </div>
     </div>
 </body>
