@@ -649,13 +649,13 @@ function renderCapMoveList(kind) {
         const amount = '$' + formatCurrency(Number(m.amount) || 0);
         const note = m.note ? `<div class="text-xs text-slate-400 dark:text-slate-500 truncate">${escapeHtml(m.note)}</div>` : '';
         return `
-        <div class="flex items-center justify-between gap-3 py-2 border-b border-slate-100 dark:border-slate-700/60 last:border-0">
+        <div class="flex items-center justify-between gap-3 py-2.5 px-3.5 mb-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
             <div class="min-w-0">
-                <div class="text-sm font-semibold text-slate-700 dark:text-slate-200">${amount}</div>
-                <div class="text-xs text-slate-400 dark:text-slate-500">${m.date || ''}</div>
+                <div class="text-sm font-bold text-slate-700 dark:text-slate-200 tabular-nums">${amount}</div>
+                <div class="text-xs text-slate-400 dark:text-slate-500 tabular-nums">${m.date || ''}</div>
                 ${note}
             </div>
-            <button onclick="deleteCapMove('${kind}','${m.id}')" class="text-slate-400 hover:text-red-500 dark:hover:text-red-400 p-2 rounded transition" aria-label="Eliminar ${cfg.noun}">
+            <button onclick="deleteCapMove('${kind}','${m.id}')" class="text-slate-400 hover:text-red-500 dark:hover:text-red-400 p-2 rounded-lg transition" aria-label="Eliminar ${cfg.noun}">
                 <i class="ph ph-trash"></i>
             </button>
         </div>`;
@@ -926,8 +926,8 @@ function renderCapitalDisplays(netForDay = null) {
     if (mainEl) {
         const net = netForDay === null ? getCurrentNet() : netForDay;
         const netColor = net > 0
-            ? 'text-green-500 dark:text-green-400'
-            : (net < 0 ? 'text-red-500 dark:text-red-400' : 'text-slate-400 dark:text-slate-500');
+            ? 'gain'
+            : (net < 0 ? 'loss' : 'text-slate-400 dark:text-slate-500');
         const arrow = net > 0 ? '▲' : (net < 0 ? '▼' : '·');
         const body = net === 0 ? formatAmount(0) : formatAmount(net, { showSign: true });
         mainEl.innerHTML = `<span class="${netColor}">${arrow} ${body}</span>`;
@@ -1063,24 +1063,24 @@ function renderStatsUI() {
     const money = (v) => mode === 'percent' ? `${v.toFixed(2)}%` : `$${(Math.round(v * 100) / 100).toFixed(2)}`;
     const signMoney = (v) => (v > 0 ? '+' : '') + money(v);
     const pf = s.profitFactor === Infinity ? '∞' : s.profitFactor.toFixed(2);
-    const netColor = s.net > 0 ? 'text-green-600 dark:text-green-400' : (s.net < 0 ? 'text-red-600 dark:text-red-400' : 'text-slate-700 dark:text-slate-200');
+    const netColor = s.net > 0 ? 'gain' : (s.net < 0 ? 'loss' : 'text-slate-700 dark:text-slate-200');
 
     if (s.totalTrades === 0) {
         kpiEl.innerHTML = `<div class="col-span-full text-center text-sm text-slate-500 dark:text-slate-400 py-4">Aún sin operaciones registradas. Empieza a añadir Take Profit / Stop Loss para ver tus estadísticas.</div>`;
     } else {
         const tiles = [
             { label: 'Win rate', val: `${s.winRate.toFixed(0)}%`, sub: `${s.wins}W / ${s.losses}L`, cls: 'text-slate-800 dark:text-slate-100' },
-            { label: 'Profit factor', val: pf, sub: s.profitFactor >= 1 ? 'rentable' : 'en pérdida', cls: (s.profitFactor >= 1 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400') },
+            { label: 'Profit factor', val: pf, sub: s.profitFactor >= 1 ? 'rentable' : 'en pérdida', cls: (s.profitFactor >= 1 ? 'gain' : 'loss') },
             { label: 'Neto', val: signMoney(s.net), sub: `${s.daysCount} día(s)`, cls: netColor },
             { label: 'Operaciones', val: `${s.totalTrades}`, sub: `${s.daysCount ? (s.totalTrades / s.daysCount).toFixed(1) : '0'}/día`, cls: 'text-slate-800 dark:text-slate-100' },
             { label: 'Racha', val: `${s.streak || 0} ${s.streakSign > 0 ? '🟢' : (s.streakSign < 0 ? '🔴' : '')}`, sub: s.streakSign > 0 ? 'días verdes' : (s.streakSign < 0 ? 'días rojos' : '—'), cls: 'text-slate-800 dark:text-slate-100' },
-            { label: 'Mejor día', val: s.bestDay ? signMoney(s.bestDay.net) : '—', sub: s.bestDay ? s.bestDay.dateKey.slice(5) : '', cls: 'text-green-600 dark:text-green-400' }
+            { label: 'Mejor día', val: s.bestDay ? signMoney(s.bestDay.net) : '—', sub: s.bestDay ? s.bestDay.dateKey.slice(5) : '', cls: 'gain' }
         ];
         kpiEl.innerHTML = tiles.map(t => `
-            <div class="sub-surface p-3 text-center">
-                <div class="text-[0.65rem] uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1">${t.label}</div>
-                <div class="font-bold text-base tabular-nums ${t.cls}">${t.val}</div>
-                <div class="text-[0.7rem] text-slate-500 dark:text-slate-400 mt-0.5">${t.sub}</div>
+            <div class="sub-surface p-3 text-center flex flex-col items-center justify-center gap-1">
+                <div class="k-lab">${t.label}</div>
+                <div class="font-bold text-lg tabular-nums ${t.cls}">${t.val}</div>
+                <div class="text-[0.7rem] text-slate-500 dark:text-slate-400">${t.sub}</div>
             </div>`).join('');
     }
     try { renderCapitalMovementsStats(); } catch (e) { /* ignore */ }
@@ -1131,11 +1131,10 @@ function renderCapitalSparkline() {
     const areaPath = `${linePath} L ${xAt(n - 1).toFixed(2)} ${(H - padY).toFixed(2)} L ${xAt(0).toFixed(2)} ${(H - padY).toFixed(2)} Z`;
 
     const last = points[points.length - 1].capital;
-    const isUp = last > initial;
-    const isDown = last < initial;
-    const stroke = isUp ? '#22c55e' : (isDown ? '#ef4444' : '#94a3b8');
-    const fillId = isUp ? 'sparkGreen' : (isDown ? 'sparkRed' : 'sparkGray');
-    const fillStop = isUp ? '#22c55e' : (isDown ? '#ef4444' : '#94a3b8');
+    // Marca "Bento OLED": línea en degradado azul→cian eléctrico (--jt-c1 → --jt-c2)
+    // y área cian. Los acentos son idénticos en tema claro y oscuro.
+    const sparkC1 = '#4facfe';
+    const sparkC2 = '#00f2fe';
 
     // Punto final destacado
     const lastX = xAt(n - 1);
@@ -1144,16 +1143,20 @@ function renderCapitalSparkline() {
     container.innerHTML = `
       <svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
         <defs>
-          <linearGradient id="${fillId}" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stop-color="${fillStop}" stop-opacity="0.32" />
-            <stop offset="100%" stop-color="${fillStop}" stop-opacity="0" />
+          <linearGradient id="jt-spark-line" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stop-color="${sparkC1}" />
+            <stop offset="100%" stop-color="${sparkC2}" />
+          </linearGradient>
+          <linearGradient id="jt-spark-fill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="${sparkC2}" stop-opacity="0.22" />
+            <stop offset="100%" stop-color="${sparkC2}" stop-opacity="0" />
           </linearGradient>
         </defs>
-        <path d="${areaPath}" fill="url(#${fillId})" />
-        <path d="${linePath}" fill="none" stroke="${stroke}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+        <path d="${areaPath}" fill="url(#jt-spark-fill)" />
+        <path d="${linePath}" fill="none" stroke="url(#jt-spark-line)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
         <line class="kpi-sparkline-hover-line" id="spark-vline" x1="0" y1="${padY}" x2="0" y2="${H - padY}" />
-        <circle class="kpi-sparkline-dot" id="spark-dot-end" cx="${lastX.toFixed(2)}" cy="${lastY.toFixed(2)}" r="3.5" stroke="${stroke}" />
-        <circle class="kpi-sparkline-dot" id="spark-dot" cx="0" cy="0" r="0" stroke="${stroke}" style="opacity:0" />
+        <circle class="kpi-sparkline-dot" id="spark-dot-end" cx="${lastX.toFixed(2)}" cy="${lastY.toFixed(2)}" r="3.5" stroke="${sparkC2}" />
+        <circle class="kpi-sparkline-dot" id="spark-dot" cx="0" cy="0" r="0" stroke="${sparkC2}" style="opacity:0" />
       </svg>
       <div class="kpi-sparkline-tooltip" id="spark-tooltip">
         <div class="tt-date"></div>
@@ -1165,7 +1168,7 @@ function renderCapitalSparkline() {
     if (metaEl) {
         const startCap = points[0].capital;
         const delta = last - startCap;
-        const cls = delta > 0 ? 'text-green-500 dark:text-green-400' : (delta < 0 ? 'text-red-500 dark:text-red-400' : '');
+        const cls = delta > 0 ? 'gain' : (delta < 0 ? 'loss' : '');
         const body = delta === 0 ? formatAmount(0) : formatAmount(delta, { showSign: true });
         metaEl.innerHTML = `<span>${n} días · </span><span class="${cls}">${body}</span>`;
     }
@@ -2231,7 +2234,7 @@ function renderList(type, list) {
         return;
     }
 
-    const valueColor = type === 'tp' ? 'text-green-500 dark:text-green-400' : 'text-red-500 dark:text-red-400';
+    const valueColor = type === 'tp' ? 'gain' : 'loss';
     const sign = type === 'tp' ? '+' : '-';
 
     // Colapsar listas largas: muestra las más recientes + botón "Ver todos".
@@ -2256,7 +2259,7 @@ function renderList(type, list) {
         wrapper.className = 'trade-entry-wrapper';
 
         wrapper.innerHTML = `
-            <div class="trade-entry-row flex justify-between items-center py-2 px-3 rounded hover:bg-slate-50 dark:hover:bg-slate-700/50 border border-transparent hover:border-slate-100 dark:hover:border-slate-600 transition group"
+            <div class="trade-entry-row flex justify-between items-center group"
                  onclick="onRowClick(event, '${type}', ${item.id})">
                 <div class="flex items-center gap-3 min-w-0 flex-1">
                     <span id="asset-${type}-${item.id}" class="font-bold text-slate-700 dark:text-slate-200 text-xs bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 rounded">${safeAsset}</span>
@@ -2266,8 +2269,8 @@ function renderList(type, list) {
                     </span>
                 </div>
                 <div class="entry-actions flex gap-3 items-center" onclick="event.stopPropagation()">
-                    <button onclick="toggleEdit('${type}', ${item.id})" title="Editar" class="entry-action-btn entry-edit text-slate-400 hover:text-teal-400 text-sm"><i class="ph ph-gear-six"></i></button>
-                    <button onclick="deleteEntry('${type}', ${item.id})" title="Eliminar" class="entry-action-btn entry-delete text-red-300 hover:text-red-500 text-sm"><i class="ph ph-x"></i></button>
+                    <button onclick="toggleEdit('${type}', ${item.id})" title="Editar" class="entry-action-btn entry-edit"><i class="ph ph-gear-six"></i></button>
+                    <button onclick="deleteEntry('${type}', ${item.id})" title="Eliminar" class="entry-action-btn entry-delete"><i class="ph ph-x"></i></button>
                 </div>
             </div>
             <div id="row-editor-${type}-${item.id}" class="row-editor hidden"></div>
@@ -2484,7 +2487,7 @@ function updateTotals() {
     bumpIfChanged(document.getElementById('footer-sl'), formatAmount(-slTotal, { showSign: true }));
 
     const netEl = document.getElementById('footer-net');
-    const colorClass = net > 0 ? 'text-green-500 dark:text-green-400' : (net < 0 ? 'text-red-500 dark:text-red-400' : 'text-slate-800 dark:text-slate-200');
+    const colorClass = net > 0 ? 'gain' : (net < 0 ? 'loss' : 'text-slate-800 dark:text-slate-200');
     bumpIfChanged(netEl, formatAmount(net, { showSign: true }));
     if (netEl) netEl.className = "font-bold text-lg tabular-nums " + colorClass;
 
@@ -2592,7 +2595,7 @@ async function generateSummaries() {
                     const monthName = first.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
                     const monthNameCap = monthName.charAt(0).toUpperCase() + monthName.slice(1);
                     const signM = stats.net > 0 ? '+' : (stats.net < 0 ? '−' : '');
-                    const monthNetClass = stats.net > 0 ? 'text-green-500 dark:text-green-400' : (stats.net < 0 ? 'text-red-500 dark:text-red-400' : 'text-slate-800 dark:text-slate-200');
+                    const monthNetClass = stats.net > 0 ? 'gain' : (stats.net < 0 ? 'loss' : 'text-slate-800 dark:text-slate-200');
                     const winRate = stats.totalDays > 0 ? ((stats.winDays / stats.totalDays) * 100).toFixed(1) : '0.0';
 
                     const monthId = `month-${ymKey}`;
@@ -2689,13 +2692,16 @@ function showToast(message, type = 'info', duration = 3000) {
     if (!container) return;
     const el = document.createElement('div');
     const base = 'rounded px-3 py-2 shadow-md flex items-center gap-3 text-sm';
+    // Las clases bg-* siguen siendo el "marker" que styles.css usa para tintar
+    // el borde del toast; el dot da el estado en el lenguaje Bento OLED.
     let color = 'bg-slate-800 text-white';
-    if (type === 'success') color = 'bg-green-600 text-white';
-    if (type === 'error') color = 'bg-red-600 text-white';
-    if (type === 'info') color = 'bg-slate-800 text-white';
+    let dotCls = 'dot-cy';
+    if (type === 'success') { color = 'bg-green-600 text-white'; dotCls = 'dot-g'; }
+    if (type === 'error') { color = 'bg-red-600 text-white'; dotCls = 'dot-r'; }
+    if (type === 'info') { color = 'bg-slate-800 text-white'; dotCls = 'dot-cy'; }
 
     el.className = `${base} ${color}`;
-    el.innerText = message;
+    el.innerHTML = `<span class="dot ${dotCls}" aria-hidden="true"></span><span class="min-w-0">${escapeHtml(message)}</span>`;
     container.appendChild(el);
     setTimeout(() => {
         el.classList.add('opacity-0');
@@ -2744,7 +2750,7 @@ function showAddWarningIfNeeded() {
 
         msg.innerHTML = `
             <div class="mb-3">Debes iniciar sesion para sincronizar estos cambios.</div>
-            <label class="inline-flex items-center text-sm"><input type="checkbox" id="modal-suppress-checkbox" class="mr-2">No mostrar de nuevo este mensaje</label>
+            <label class="inline-flex items-center text-sm"><input type="checkbox" id="modal-suppress-checkbox" class="mr-2 accent-blue-400">No mostrar de nuevo este mensaje</label>
         `;
         overlay.classList.remove('hidden');
 

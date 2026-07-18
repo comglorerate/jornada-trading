@@ -3,7 +3,7 @@
 // (Firebase, CDN, etc.). Cualquier cambio aquí debe subir CACHE_VERSION para
 // invalidar el caché de versiones anteriores.
 
-const CACHE_VERSION = 'v21';
+const CACHE_VERSION = 'v22';
 const CACHE_NAME = `jornada-trading-${CACHE_VERSION}`;
 
 // Assets propios que queremos disponibles offline
