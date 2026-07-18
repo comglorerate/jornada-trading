@@ -1133,6 +1133,18 @@ html.dark .entry-delete:hover { background: rgba(255, 69, 58, 0.14); color: var(
 }
 .sub-surface:hover { transform: translateY(-2px); border-color: var(--jt-line2); }
 
+/* Anillo de progreso del Win rate */
+.jt-ring {
+    width: 96px;
+    height: 96px;
+    display: block;
+}
+.jt-ring text { font-family: inherit; }
+.jt-ring .jt-gr1 { stop-color: var(--jt-c1); }
+.jt-ring .jt-gr2 { stop-color: var(--jt-c2); }
+html:not(.dark) .jt-ring .jt-gr1 { stop-color: #2f8fe8; }
+html:not(.dark) .jt-ring .jt-gr2 { stop-color: #00a7b8; }
+
 /* Chips de movimientos de capital */
 .cap-moves {
     display: grid;

@@ -1068,15 +1068,33 @@ function renderStatsUI() {
     if (s.totalTrades === 0) {
         kpiEl.innerHTML = `<div class="col-span-full text-center text-sm text-slate-500 dark:text-slate-400 py-4">Aún sin operaciones registradas. Empieza a añadir Take Profit / Stop Loss para ver tus estadísticas.</div>`;
     } else {
+        const wr = Math.max(0, Math.min(100, s.winRate));
+        const ringTile = `
+            <div class="sub-surface p-3 text-center flex flex-col items-center justify-center gap-1">
+                <svg class="jt-ring" viewBox="0 0 140 140" role="img" aria-label="Win rate del ${wr.toFixed(0)} por ciento">
+                    <defs>
+                        <linearGradient id="jt-gring" x1="0" y1="0" x2="1" y2="1">
+                            <stop class="jt-gr1" offset="0"/>
+                            <stop class="jt-gr2" offset="1"/>
+                        </linearGradient>
+                    </defs>
+                    <circle cx="70" cy="70" r="58" fill="none" stroke="var(--jt-line)" stroke-width="11"/>
+                    ${wr > 0 ? `<circle cx="70" cy="70" r="58" fill="none" stroke="url(#jt-gring)" stroke-width="11"
+                            stroke-linecap="round" pathLength="100" stroke-dasharray="${wr.toFixed(1)} ${(100 - wr).toFixed(1)}"
+                            transform="rotate(-90 70 70)"/>` : ''}
+                    <text x="70" y="76" text-anchor="middle" font-size="29" font-weight="800" fill="url(#jt-gring)" letter-spacing="-1">${wr.toFixed(0)}%</text>
+                    <text x="70" y="94" text-anchor="middle" font-size="8.5" font-weight="600" fill="var(--jt-sub)" letter-spacing="1.5">WIN RATE</text>
+                </svg>
+                <div class="text-[0.7rem] text-slate-500 dark:text-slate-400">${s.wins}W / ${s.losses}L</div>
+            </div>`;
         const tiles = [
-            { label: 'Win rate', val: `${s.winRate.toFixed(0)}%`, sub: `${s.wins}W / ${s.losses}L`, cls: 'text-slate-800 dark:text-slate-100' },
             { label: 'Profit factor', val: pf, sub: s.profitFactor >= 1 ? 'rentable' : 'en pérdida', cls: (s.profitFactor >= 1 ? 'gain' : 'loss') },
             { label: 'Neto', val: signMoney(s.net), sub: `${s.daysCount} día(s)`, cls: netColor },
             { label: 'Operaciones', val: `${s.totalTrades}`, sub: `${s.daysCount ? (s.totalTrades / s.daysCount).toFixed(1) : '0'}/día`, cls: 'text-slate-800 dark:text-slate-100' },
             { label: 'Racha', val: `${s.streak || 0} ${s.streakSign > 0 ? '🟢' : (s.streakSign < 0 ? '🔴' : '')}`, sub: s.streakSign > 0 ? 'días verdes' : (s.streakSign < 0 ? 'días rojos' : '—'), cls: 'text-slate-800 dark:text-slate-100' },
             { label: 'Mejor día', val: s.bestDay ? signMoney(s.bestDay.net) : '—', sub: s.bestDay ? s.bestDay.dateKey.slice(5) : '', cls: 'gain' }
         ];
-        kpiEl.innerHTML = tiles.map(t => `
+        kpiEl.innerHTML = ringTile + tiles.map(t => `
             <div class="sub-surface p-3 text-center flex flex-col items-center justify-center gap-1">
                 <div class="k-lab">${t.label}</div>
                 <div class="font-bold text-lg tabular-nums ${t.cls}">${t.val}</div>
