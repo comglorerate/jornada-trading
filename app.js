@@ -71,7 +71,7 @@ function normalizeCurrentData() {
 // Capital dinámico: configuración y estado
 const CAPITAL_STORAGE_KEY = 'trading_capital_config';
 const DISPLAY_PREF_KEY = 'trading_display_pref';
-let capitalConfig = { initial: 1000, withdrawals: [], deposits: [] };
+let capitalConfig = { initial: 0, withdrawals: [], deposits: [] };
 let capitalTimeline = []; // [{ dateKey, cumulativeNet, capital, relativePct }]
 
 // --- Movimientos de capital: retiros y depósitos ---
@@ -494,9 +494,9 @@ async function readManyJournalForDates(keys) {
 }
 
 // --- CAPITAL DINÁMICO (config + cálculo determinístico) ---
-function sanitizeCapitalValue(val, fallback = 1000) {
+function sanitizeCapitalValue(val, fallback = 0) {
     const n = Number(val);
-    if (!Number.isFinite(n) || n <= 0) return fallback;
+    if (!Number.isFinite(n) || n < 0) return fallback;
     return n;
 }
 
@@ -728,7 +728,7 @@ function setupCapitalInput() {
     if (!input) return;
     const handler = () => {
         const val = parseFloat(input.value);
-        if (!Number.isFinite(val) || val <= 0) {
+        if (!Number.isFinite(val) || val < 0) {
             showToast('Ingresa un capital inicial válido', 'error');
             input.value = capitalConfig.initial;
             return;
@@ -849,9 +849,9 @@ function computeCapitalTimelineFromJournals(journalMap) {
     const timeline = [];
     let cumulativeNet = 0;
 
-    // Salvaguarda: si por alguna razón el capital inicial es 0 o inválido,
-    // usamos 1 como referencia para no producir Infinity al dividir.
-    const baseCapital = (capitalConfig.initial && capitalConfig.initial > 0) ? capitalConfig.initial : 1;
+    // Salvaguarda: con capital inicial 0 (o inválido) la base es 0 y el %
+    // relativo queda en 0 — nunca dividimos por cero (sin NaN/Infinity).
+    const baseCapital = Number(capitalConfig.initial) > 0 ? Number(capitalConfig.initial) : 0;
 
     for (const dateKey of keys) {
         const data = journalMap[dateKey];
@@ -863,7 +863,7 @@ function computeCapitalTimelineFromJournals(journalMap) {
 
         cumulativeNet += dailyNet;
         const capital = baseCapital + cumulativeNet;
-        const relativePct = (cumulativeNet / baseCapital) * 100;
+        const relativePct = baseCapital > 0 ? (cumulativeNet / baseCapital) * 100 : 0;
 
         timeline.push({
             dateKey,
@@ -1111,7 +1111,7 @@ function renderCapitalSparkline() {
     if (!container) return;
 
     const journals = __lastJournalsCache || {};
-    const initial = capitalConfig.initial || 1000;
+    const initial = Number(capitalConfig.initial) || 0;
     const fullSeries = buildDailyCapitalSeries(initial, journals);
 
     // Mostrar últimos 30 puntos como máximo
@@ -2125,7 +2125,7 @@ async function clearList(type) {
 }
 
 async function clearAll() {
-    const ok = await showConfirmModal('¿Eliminar todos los datos locales y en la nube? Esta acción es irreversible. ¿Deseas continuar?');
+    const ok = await showConfirmModal('¿Eliminar todos los datos locales y en la nube? Se borrarán las operaciones del día, tus depósitos y retiros, y el capital inicial volverá a 0. Esta acción es irreversible. ¿Deseas continuar?');
     if (!ok) return;
 
     // Desactivar listeners para evitar que snapshots repueblen localStorage mientras borramos
@@ -2153,7 +2153,16 @@ async function clearAll() {
     try { __journalCache.clear(); } catch (e) { /* ignore */ }
     currentData = { tps: [], sls: [] };
     normalizeCurrentData();
+    // Resetear capital, depósitos y retiros en memoria y re-crear la clave
+    // local con los defaults (así ni una recarga offline muestra datos viejos).
+    capitalConfig = { initial: 0, withdrawals: [], deposits: [] };
+    capitalTimeline = [];
+    saveCapitalLocal();
+    const capInput = document.getElementById('capital-input');
+    if (capInput) capInput.value = capitalConfig.initial;
+    try { updateCapMoveUI(); } catch (e) { /* ignore */ }
     renderUI();
+    try { renderCapitalDisplays(0); } catch (e) { /* ignore */ }
     scheduleCapitalRecalc();
     // Limpiar los contenedores de resúmenes para que no se muestren datos antiguos
     try {
@@ -2185,6 +2194,17 @@ async function clearAll() {
                 }
             }
             showToast(`Eliminados ${deleted} documento(s) en la nube`, 'success', 2400);
+            // Resetear el doc de capital en la nube (initialCapital, depósitos y
+            // retiros) ANTES de recrear los listeners con loadDataFirestore():
+            // así el snapshot llega ya con los defaults y no re-puebla los datos
+            // borrados. merge:true conserva displayMode (mismo patrón que
+            // saveCapitalConfigRemote / saveCapMoveRemote).
+            try {
+                const capRef = window.firebaseFirestoreDoc(db, 'users', uid, 'config', 'capital');
+                await window.firebaseFirestoreSetDoc(capRef, { initialCapital: 0, withdrawals: [], deposits: [] }, { merge: true });
+            } catch (err) {
+                console.warn('No se pudo resetear el capital en la nube', err);
+            }
             // actualizar listeners/UI: recargar desde Firestore (vacío)
             // Nota: tras la eliminación no recreamos entradas locales automáticamente.
             try { await loadDataFirestore(); } catch (e) { /* ignore */ }
