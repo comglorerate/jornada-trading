@@ -145,6 +145,9 @@ test('Datos vacíos = ceros', () => {
 section('Cálculo del timeline de capital');
 
 function computeCapital(initial, journals) {
+    // Copia de computeCapitalTimelineFromJournals (app.js): con initial <= 0
+    // la base es 0 y relativePct queda en 0 — nunca NaN/Infinity.
+    const base = Number(initial) > 0 ? Number(initial) : 0;
     const keys = Object.keys(journals).sort();
     const timeline = [];
     let cum = 0;
@@ -155,7 +158,7 @@ function computeCapital(initial, journals) {
         const dailyNet = tp - sl;
         if (!dailyNet) continue;
         cum += dailyNet;
-        timeline.push({ dateKey: k, cumulativeNet: cum, capital: initial + cum, relativePct: (cum / initial) * 100 });
+        timeline.push({ dateKey: k, cumulativeNet: cum, capital: base + cum, relativePct: base > 0 ? (cum / base) * 100 : 0 });
     }
     return timeline;
 }
@@ -180,6 +183,118 @@ test('Días sin net no aparecen en timeline', () => {
     const tl = computeCapital(1000, j);
     assert.strictEqual(tl.length, 1);
     assert.strictEqual(tl[0].dateKey, '2024-01-16');
+});
+
+// =====================================================
+// 5b) Capital inicial 0 (default nuevo) — sin NaN/Infinity
+// =====================================================
+section('Capital inicial 0 — porcentajes sin NaN/Infinity');
+
+test('initial=0: capital = neto acumulado y relativePct = 0', () => {
+    const j = {
+        '2024-01-15': { tps: [{ value: 5 }], sls: [{ value: 2 }] }, // +3
+        '2024-01-16': { tps: [], sls: [{ value: 1 }] } // -1
+    };
+    const tl = computeCapital(0, j);
+    assert.strictEqual(tl.length, 2);
+    assert.strictEqual(tl[0].capital, 3);
+    assert.strictEqual(tl[1].capital, 2);
+    assert.strictEqual(tl[0].relativePct, 0);
+    assert.strictEqual(tl[1].relativePct, 0);
+});
+
+test('initial=0: ningún campo es NaN/Infinity', () => {
+    const j = { '2024-01-15': { tps: [{ value: 5 }], sls: [] } };
+    for (const row of computeCapital(0, j)) {
+        assert.ok(Number.isFinite(row.capital), 'capital finito');
+        assert.ok(Number.isFinite(row.relativePct), 'relativePct finito');
+        assert.ok(Number.isFinite(row.cumulativeNet), 'cumulativeNet finito');
+    }
+});
+
+test('initial negativo o inválido se trata como base 0 (sin dividir)', () => {
+    const j = { '2024-01-15': { tps: [{ value: 5 }], sls: [] } };
+    for (const bad of [-100, NaN, undefined, null, 'foo']) {
+        const tl = computeCapital(bad, j);
+        assert.strictEqual(tl[0].relativePct, 0);
+        assert.ok(Number.isFinite(tl[0].capital));
+    }
+});
+
+test('initial>0 conserva el comportamiento anterior (sin cambios)', () => {
+    const j = { '2024-01-15': { tps: [{ value: 6 }], sls: [] } };
+    const tl = computeCapital(1000, j);
+    assert.strictEqual(tl[0].capital, 1006);
+    assert.strictEqual(tl[0].relativePct, 0.6);
+});
+
+// =====================================================
+// 5c) sanitizeCapitalValue — acepta 0, rechaza negativos
+// =====================================================
+section('sanitizeCapitalValue (default 0)');
+
+function sanitizeCapitalValue(val, fallback = 0) {
+    // Copia exacta de app.js
+    const n = Number(val);
+    if (!Number.isFinite(n) || n < 0) return fallback;
+    return n;
+}
+
+test('Acepta 0 (sobrevive una carga)', () => assert.strictEqual(sanitizeCapitalValue(0), 0));
+test('Acepta positivos', () => assert.strictEqual(sanitizeCapitalValue(110), 110));
+test('Rechaza negativos → fallback 0', () => assert.strictEqual(sanitizeCapitalValue(-5), 0));
+test('Rechaza NaN/undefined → fallback dado', () => {
+    assert.strictEqual(sanitizeCapitalValue(NaN, 7), 7);
+    assert.strictEqual(sanitizeCapitalValue(undefined, 7), 7);
+});
+
+// =====================================================
+// 5d) Reset de clearAll — capital, depósitos y retiros a default
+// =====================================================
+section('clearAll — reset de capitalConfig y snapshot');
+
+// Copia de getCapitalSnapshot (app.js): capital = initial + (depósitos − retiros),
+// y si hay timeline usa el último punto sumándole el neto de movimientos.
+function capitalSnapshot(config, timeline) {
+    const sum = list => (Array.isArray(list) ? list : []).reduce((s, m) => s + (Number(m.amount) || 0), 0);
+    const net = sum(config.deposits) - sum(config.withdrawals);
+    const base = { capital: config.initial + net, relativePct: 0, cumulativeNet: 0 };
+    if (!timeline || timeline.length === 0) return base;
+    const last = timeline[timeline.length - 1];
+    return Object.assign({}, last, { capital: last.capital + net });
+}
+
+// Reset que aplica clearAll (app.js): default con capital 0 y sin movimientos.
+function clearAllCapitalReset() {
+    return { config: { initial: 0, withdrawals: [], deposits: [] }, timeline: [] };
+}
+
+test('Tras el reset, snapshot queda en 0 y sin %', () => {
+    // Estado previo con datos (initial 110, depósito 50, retiro 20, un trade +5)
+    let config = { initial: 110, withdrawals: [{ amount: 20 }], deposits: [{ amount: 50 }] };
+    let timeline = computeCapital(config.initial, { '2024-01-15': { tps: [{ value: 5 }], sls: [] } });
+    const before = capitalSnapshot(config, timeline);
+    assert.strictEqual(before.capital, 145); // 110 + 5 + 50 − 20
+    // Reset de clearAll
+    const reset = clearAllCapitalReset();
+    config = reset.config; timeline = reset.timeline;
+    const snap = capitalSnapshot(config, timeline);
+    assert.strictEqual(snap.capital, 0);
+    assert.strictEqual(snap.relativePct, 0);
+    assert.strictEqual(snap.cumulativeNet, 0);
+});
+
+test('Tras el reset, los totales de movimientos son 0 (chips ocultos)', () => {
+    const { config } = clearAllCapitalReset();
+    const total = kind => (Array.isArray(config[kind]) ? config[kind] : []).reduce((s, m) => s + (Number(m.amount) || 0), 0);
+    // updateCapMoveUI oculta el chip cuando total <= 0
+    assert.strictEqual(total('withdrawals'), 0);
+    assert.strictEqual(total('deposits'), 0);
+});
+
+test('El reset sobrevive a sanitize (0 es válido, no vuelve a 1000)', () => {
+    const { config } = clearAllCapitalReset();
+    assert.strictEqual(sanitizeCapitalValue(config.initial), 0);
 });
 
 // =====================================================
